@@ -10,9 +10,9 @@ class DocumentController extends Controller
     // ① ファイル管理画面を表示する処理
     public function index()
     {
-        // データベースから、最新のアップロード順にすべての記録を取ってくる！
-        $documents = \App\Models\Document::latest()->get();
-        
+        // 自分がアップロードしたファイルのみ取得（他ユーザーのファイルは非表示）
+        $documents = \App\Models\Document::where('user_id', auth()->id())->latest()->get();
+
         // 画面（View）に、取ってきたデータ（$documents）を渡して表示させる
         return view('file_manager', compact('documents'));
     }

@@ -89,7 +89,7 @@
                                     <div class="w-1.5 h-1.5 rounded-full bg-slate-600 mt-1.5 shrink-0"></div>
                                     <div>
                                         <p class="text-[11px] text-slate-300 leading-snug">
-                                            <span class="font-bold text-slate-400 mr-1">{{ $log->causer->name ?? 'System' }}:</span>
+                                            <span class="font-bold text-slate-400 mr-1">{{ $log->causer?->name ?? 'System' }}:</span>
                                             {{ $log->description }}
                                         </p>
                                         <p class="text-[9px] text-slate-500 font-mono mt-0.5">{{ $log->created_at->diffForHumans() }}</p>

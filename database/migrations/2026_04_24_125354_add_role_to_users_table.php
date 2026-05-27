@@ -11,15 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->string('role')->default('user')->after('email');
-        });
+        // 先行マイグレーション(2026_04_23)で既に追加済みの場合はスキップ
+        if (!Schema::hasColumn('users', 'role')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->string('role')->default('user')->after('email');
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('role');
-        });
+        if (Schema::hasColumn('users', 'role')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->dropColumn('role');
+            });
+        }
     }
 };

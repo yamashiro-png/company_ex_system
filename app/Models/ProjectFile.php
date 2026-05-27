@@ -8,8 +8,8 @@ class ProjectFile extends Model
 {
     protected $fillable = ['project_id', 'file_name', 'file_path'];
     
-    public function files()
+    public function project()
     {
-        return $this->hasMany(ProjectFile::class);
+        return $this->belongsTo(Project::class);
     }
 }

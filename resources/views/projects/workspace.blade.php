@@ -195,7 +195,7 @@
                     @if(session('generated_email'))
                         <div class="mt-6 p-6 bg-black/40 rounded-2xl border border-orange-500/30 relative group">
                             <pre class="text-sm text-orange-100 whitespace-pre-wrap font-mono">{{ session('generated_email') }}</pre>
-                            <button onclick="navigator.clipboard.writeText(`{{ session('generated_email') }}`).then(() => alert('コピーしました'))" class="absolute top-4 right-4 bg-orange-500/20 text-orange-300 text-xs py-1 px-3 rounded-lg border border-orange-500/30 hover:bg-orange-500 hover:text-white transition-all">コピー</button>
+                            <button onclick="navigator.clipboard.writeText({{ json_encode(session('generated_email')) }}).then(() => alert('コピーしました'))" class="absolute top-4 right-4 bg-orange-500/20 text-orange-300 text-xs py-1 px-3 rounded-lg border border-orange-500/30 hover:bg-orange-500 hover:text-white transition-all">コピー</button>
                         </div>
                     @endif
                 </div>
@@ -362,7 +362,7 @@
                             @if(session('generated_final_email'))
                                 <div class="mt-4 p-5 bg-purple-900/20 rounded-2xl border border-purple-500/30 relative">
                                     <pre class="text-sm text-purple-100 whitespace-pre-wrap font-mono">{{ session('generated_final_email') }}</pre>
-                                    <button onclick="navigator.clipboard.writeText(`{{ session('generated_final_email') }}`).then(() => alert('コピーしました'))" class="absolute top-4 right-4 bg-purple-500/20 text-purple-300 text-xs py-1 px-3 rounded-lg border border-purple-500/30 hover:bg-purple-500 hover:text-white transition-all cursor-pointer">コピー</button>
+                                    <button onclick="navigator.clipboard.writeText({{ json_encode(session('generated_final_email')) }}).then(() => alert('コピーしました'))" class="absolute top-4 right-4 bg-purple-500/20 text-purple-300 text-xs py-1 px-3 rounded-lg border border-purple-500/30 hover:bg-purple-500 hover:text-white transition-all cursor-pointer">コピー</button>
                                 </div>
                             @endif
                         </div>

@@ -52,6 +52,8 @@ class ProjectController extends Controller
      */
     public function generateEmail(Request $request, Project $project)
     {
+        Gate::authorize('admin');
+
         $request->validate(['partner_name' => 'required|string']);
 
         $project->estimates()->create([
@@ -77,6 +79,8 @@ class ProjectController extends Controller
      */
     public function update(Request $request, Project $project)
     {
+        Gate::authorize('admin');
+
         // 1. バリデーション（final_price を追加）
         $validated = $request->validate([
             'device_model' => 'nullable|string',
@@ -87,16 +91,23 @@ class ProjectController extends Controller
             'final_price' => 'nullable|numeric', // STEP 4用
             'partner_name' => 'nullable|string',
             'notes' => 'nullable|string',
+            'parameter_input_type' => 'nullable|in:file,text', // 値をホワイトリストで制限
+            'parameter_text' => 'nullable|string',
         ]);
 
-        // 2. 送信されたデータだけを抽出（上書き防止）
-        $updateData = $request->only([
-            'device_model', 'device_count', 'contract_date', 
-            'completion_date', 'price', 'final_price', 'partner_name', 'notes', 'parameter_input_type', 'parameter_text'
-        ]);
+        // 2. バリデーション済みデータのみを使用（$request->only() は使わない）
+        $updateData = array_filter($validated, fn($v) => $v !== null);
 
         // 3. ファイルアップロード（STEP 1）
         if ($request->hasFile('parameter_files')) {
+            // ファイル種別・サイズのバリデーション（DocumentController と同じ基準）
+            $request->validate([
+                'parameter_files.*' => 'file|mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png|max:10240',
+            ], [
+                'parameter_files.*.mimes' => 'PDF・Word・Excel・画像ファイルのみアップロード可能です。',
+                'parameter_files.*.max'   => 'ファイルサイズは10MB以下にしてください。',
+            ]);
+
             foreach ($request->file('parameter_files') as $file) {
                 $path = $file->store('project_files', 'public');
                 $project->files()->create([
@@ -108,14 +119,22 @@ class ProjectController extends Controller
 
         // 4. 相見積もり回答の保存処理（STEP 3）
         if ($request->has('estimates')) {
+            // 見積回答フィールドを個別にバリデーション
+            $request->validate([
+                'estimates.*.cost_price'              => 'nullable|numeric|min:0',
+                'estimates.*.partner_completion_date' => 'nullable|date',
+                'estimates.*.partner_message'         => 'nullable|string|max:2000',
+            ]);
+
             $hasAnswer = false;
             foreach ($request->estimates as $id => $data) {
                 if (!empty($data['cost_price'])) $hasAnswer = true;
-                
-                $project->estimates()->where('id', $id)->update([
-                    'cost_price' => $data['cost_price'],
-                    'partner_completion_date' => $data['partner_completion_date'],
-                    'partner_message' => $data['partner_message'],
+
+                // $id を整数にキャストし、必ずこの案件の見積もりのみ更新する
+                $project->estimates()->where('id', (int) $id)->update([
+                    'cost_price'              => $data['cost_price'] ?? null,
+                    'partner_completion_date' => $data['partner_completion_date'] ?? null,
+                    'partner_message'         => $data['partner_message'] ?? null,
                 ]);
             }
 
@@ -147,6 +166,8 @@ class ProjectController extends Controller
 
     public function deleteFile(ProjectFile $projectFile)
     {
+        Gate::authorize('admin');
+
         Storage::disk('public')->delete($projectFile->file_path);
         $projectFile->delete();
         return back()->with('success', 'ファイルを削除しました。');
@@ -155,11 +176,34 @@ class ProjectController extends Controller
     public function index(Request $request)
     {
         $query = Project::with(['customer', 'estimates']);
-        $sort = $request->get('sort', 'created_at');
-        $direction = $request->get('direction', 'desc');
-        
+
+        // ホワイトリストで許可するカラム名・方向のみ受け付ける（SQLインジェクション対策）
+        $allowedSorts = ['name', 'status', 'device_model', 'device_count', 'price', 'completion_date', 'created_at', 'customer_name', 'reply_status'];
+        $allowedDirections = ['asc', 'desc'];
+
+        $sort = in_array($request->get('sort'), $allowedSorts) ? $request->get('sort') : 'created_at';
+        $direction = in_array($request->get('direction'), $allowedDirections) ? $request->get('direction') : 'desc';
+
+        // 検索フィルター
+        if ($request->filled('search_name')) {
+            $query->where('name', 'like', '%' . $request->search_name . '%');
+        }
+        if ($request->filled('search_customer')) {
+            $query->whereHas('customer', function ($q) use ($request) {
+                $q->where('name', 'like', '%' . $request->search_customer . '%');
+            });
+        }
+        if ($request->filled('search_status')) {
+            $query->where('status', $request->search_status);
+        }
+        if ($request->filled('search_device')) {
+            $query->where('device_model', 'like', '%' . $request->search_device . '%');
+        }
+
         if ($sort === 'reply_status') {
-            $query->orderByRaw('(SELECT COUNT(*) FROM project_estimates WHERE project_id = projects.id AND cost_price IS NOT NULL) ' . $direction);
+            $query->orderByRaw(
+                '(SELECT COUNT(*) FROM project_estimates WHERE project_id = projects.id AND cost_price IS NOT NULL) ' . $direction
+            );
         } else {
             $query->orderBy($sort, $direction);
         }
@@ -170,9 +214,16 @@ class ProjectController extends Controller
 
     public function generateFinalEmail(Request $request, Project $project)
     {
+        Gate::authorize('admin');
+
         // 顧客情報の取得（リレーションが貼られている前提）
         $customer = $project->customer;
-        
+
+        // completion_date が未設定の場合も安全に処理する
+        $completionDateText = $project->completion_date
+            ? \Carbon\Carbon::parse($project->completion_date)->format('Y年m月d日')
+            : '未定';
+
         $template = "{$customer->name}\n" .
                     "{$project->pic_name} 様\n\n" .
                     "いつも大変お世話になっております。\n" .
@@ -181,7 +232,7 @@ class ProjectController extends Controller
                     "お見積もりが整いましたので、以下の通りご案内申し上げます。\n\n" .
                     "【案件名】: {$project->name}\n" .
                     "【御見積金額】: ¥" . number_format($project->final_price) . "- (税別)\n" .
-                    "【完了予定日】: " . (\Carbon\Carbon::parse($project->completion_date)->format('Y年m月d日')) . "\n\n" .
+                    "【完了予定日】: {$completionDateText}\n\n" .
                     "ご査収のほど、よろしくお願い申し上げます。";
 
         return back()->with('generated_final_email', $template);

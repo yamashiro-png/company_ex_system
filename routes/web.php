@@ -74,16 +74,12 @@ Route::middleware('auth')->group(function () {
     Route::put('/customers/{customer}', [CustomerController::class, 'update'])->name('customers.update');
     Route::get('/customers/{customer}', [CustomerController::class, 'show'])->name('customers.show');
     Route::delete('/customers/{customer}', [CustomerController::class, 'destroy'])->name('customers.destroy');
-    // パラメーターファイルのダウンロードと削除用のルート
+    // プロジェクトファイルのダウンロードと削除
     Route::get('/projects/files/{projectFile}/download', [App\Http\Controllers\ProjectController::class, 'downloadFile'])->name('projects.files.download');
     Route::delete('/projects/files/{projectFile}/delete', [App\Http\Controllers\ProjectController::class, 'deleteFile'])->name('projects.files.delete');
     Route::get('/projects/{project}/workspace', [App\Http\Controllers\ProjectController::class, 'workspace'])->name('projects.workspace');
     Route::put('/projects/{project}', [App\Http\Controllers\ProjectController::class, 'update'])->name('projects.update');
     Route::post('/projects/{project}/generate-email', [App\Http\Controllers\ProjectController::class, 'generateEmail'])->name('projects.generate_email');
-    Route::delete('/projects/{project}/parameter-file', [App\Http\Controllers\ProjectController::class, 'deleteParameterFile'])->name('projects.delete_parameter_file');
-    Route::get('/projects/{project}/parameter-file/download', [App\Http\Controllers\ProjectController::class, 'downloadParameterFile'])->name('projects.download_parameter_file');
-    Route::get('/project-files/{projectFile}/download', [App\Http\Controllers\ProjectController::class, 'downloadFile'])->name('project_files.download');
-    Route::delete('/project-files/{projectFile}', [App\Http\Controllers\ProjectController::class, 'deleteFile'])->name('project_files.destroy');
     Route::post('/projects/{project}/generate-final-email', [App\Http\Controllers\ProjectController::class, 'generateFinalEmail'])->name('projects.generate_final_email');
 });
 

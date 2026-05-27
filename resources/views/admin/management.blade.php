@@ -105,12 +105,18 @@
                         <span class="w-1.5 h-6 bg-orange-500 rounded-full"></span>
                         新規システムユーザーの登録
                     </h3>
-                    <form action="{{ route('admin.users.store') }}" method="POST" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <form action="{{ route('admin.users.store') }}" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-4">
                         @csrf
                         <input type="text" name="name" placeholder="ユーザー名" class="bg-black/40 border-white/30 rounded-xl text-sm focus:ring-orange-500 text-white px-4 py-3" required>
                         <input type="email" name="email" placeholder="メールアドレス" class="bg-black/40 border-white/30 rounded-xl text-sm focus:ring-orange-500 text-white px-4 py-3" required>
+                        <select name="role" class="bg-black/40 border-white/30 rounded-xl text-sm focus:ring-orange-500 text-white px-4 py-3 cursor-pointer" required>
+                            <option value="">権限を選択</option>
+                            <option value="user">user（一般）</option>
+                            <option value="admin">admin（管理者）</option>
+                            <option value="system_admin">system_admin（最高管理者）</option>
+                        </select>
                         <div class="flex gap-4">
-                            <input type="password" name="password" placeholder="パスワード" class="flex-grow bg-black/40 border-white/30 rounded-xl text-sm focus:ring-orange-500 text-white px-4 py-3" required>
+                            <input type="password" name="password" placeholder="パスワード（8文字以上）" class="flex-grow bg-black/40 border-white/30 rounded-xl text-sm focus:ring-orange-500 text-white px-4 py-3" required>
                             <button type="submit" class="bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg shadow-orange-600/30 text-sm whitespace-nowrap">登録</button>
                         </div>
                     </form>
@@ -174,7 +180,7 @@
                                         </span>
                                         </div>
                                 </div>
-                                <form action="{{ route('admin.projects.destroy', $project) }}" method="POST" onsubmit="return confirm('本当に案件「{{ $project->name }}」を完全に削除しますか？\nこの操作は取り消せません。');">
+                                <form action="{{ route('admin.projects.destroy', $project) }}" method="POST" onsubmit="return confirm({{ \Illuminate\Support\Js::from('本当に案件「' . $project->name . '」を完全に削除しますか？' . "\n" . 'この操作は取り消せません。') }});">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="text-[16px] bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white py-1.5 px-4 rounded-full font-bold transition-all border border-red-500/30 shadow-md">削除</button>
                                 </form>
