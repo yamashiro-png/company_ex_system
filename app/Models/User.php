@@ -23,7 +23,34 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'supervisor_id',
+        'stamp_path',
+        'company_name',
     ];
+
+    /**
+     * 担当する依頼先会社（複数）
+     */
+    public function assignedUnderCompanies()
+    {
+        return $this->belongsToMany(\App\Models\UnderCompany::class, 'under_company_user', 'user_id', 'under_company_id');
+    }
+
+    /**
+     * このユーザーの上長
+     */
+    public function supervisor()
+    {
+        return $this->belongsTo(User::class, 'supervisor_id');
+    }
+
+    /**
+     * このユーザーを上長とする部下たち
+     */
+    public function subordinates()
+    {
+        return $this->hasMany(User::class, 'supervisor_id');
+    }
 
     /**
      * The attributes that should be hidden for serialization.

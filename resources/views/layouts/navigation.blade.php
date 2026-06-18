@@ -1,24 +1,41 @@
+@php
+    // 部下が登録されている（＝誰かの上長になっている）ユーザーにだけ承認メニューを表示
+    $isSupervisor = Auth::user()->subordinates()->exists();
+    $pendingApprovalCount = $isSupervisor
+        ? \App\Models\EstimateEditRequest::where('supervisor_id', Auth::id())->where('status', 'pending')->count()
+          + \App\Models\ProjectEditRequest::where('supervisor_id', Auth::id())->where('status', 'pending')->count()
+        : 0;
+@endphp
 <nav x-data="{ open: false }" class="bg-white/5 backdrop-blur-lg border-b border-white/10 sticky top-0 z-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
             <div class="flex">
                 <div class="shrink-0 flex items-center font-black text-xl tracking-tighter text-blue-400">
-                    PMT SYSTEM
+                    Nexus
                 </div>
 
                 <div class="hidden space-x-8 sm:-my-px sm:ml-10 sm:flex text-xs font-bold uppercase tracking-widest">
                     <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" class="text-slate-300 hover:text-white transition-colors">
                         {{ __('Dashboard') }}
                     </x-nav-link>
-                    <x-nav-link :href="route('file_manager')" :active="request()->routeIs('file_manager')" class="text-slate-300 hover:text-white transition-colors">
-                        ファイル管理
-                    </x-nav-link>
                     <x-nav-link :href="route('projects.index')" :active="request()->routeIs('projects.*')" class="text-slate-300 hover:text-white transition-colors">
                         案件一覧
                     </x-nav-link>
+                    @if($isSupervisor)
+                    <x-nav-link :href="route('approvals.index')" :active="request()->routeIs('approvals.*')" class="text-slate-300 hover:text-white transition-colors">
+                        <span class="flex items-center gap-1.5">
+                            承認待ち
+                            @if($pendingApprovalCount > 0)
+                                <span class="min-w-[18px] h-[18px] px-1 bg-amber-500 text-black text-[10px] font-black rounded-full flex items-center justify-center">{{ $pendingApprovalCount }}</span>
+                            @endif
+                        </span>
+                    </x-nav-link>
+                    @endif
+                    @can('admin')
                     <x-nav-link :href="route('admin.management')" :active="request()->routeIs('admin.*')" class="text-slate-300 hover:text-white transition-colors">
                         マスター設定
                     </x-nav-link>
+                    @endcan
                 </div>
             </div>
 
@@ -48,15 +65,19 @@
             <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" class="text-slate-300">
                 ダッシュボード
             </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('file_manager')" :active="request()->routeIs('file_manager')" class="text-slate-300">
-                ファイル管理
-            </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('projects.index')" :active="request()->routeIs('projects.*')" class="text-slate-300">
                 案件一覧
             </x-responsive-nav-link>
+            @if($isSupervisor)
+            <x-responsive-nav-link :href="route('approvals.index')" :active="request()->routeIs('approvals.*')" class="text-slate-300">
+                承認待ち{{ $pendingApprovalCount > 0 ? '（' . $pendingApprovalCount . '）' : '' }}
+            </x-responsive-nav-link>
+            @endif
+            @can('admin')
             <x-responsive-nav-link :href="route('admin.management')" :active="request()->routeIs('admin.*')" class="text-slate-300">
                 マスター設定
             </x-responsive-nav-link>
+            @endcan
         </div>
 
         <div class="pt-4 pb-1 border-t border-white/10">

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ログイン - {{ config('app.name', 'PMT SYSTEM') }}</title>
+    <title>ログイン - {{ config('app.name', 'Nexus') }}</title>
     
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,900&display=swap" rel="stylesheet" />
@@ -16,7 +16,7 @@
 
     <div class="mb-10 transition-all duration-1000 transform hover:scale-105 z-10">
         <h1 class="text-4xl md:text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400 drop-shadow-lg">
-            PMT SYSTEM
+            Nexus
         </h1>
     </div>
 

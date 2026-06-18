@@ -32,8 +32,14 @@
                                     '見積もり依頼中' => 'bg-orange-600/30 text-orange-200 border-orange-500/50',
                                     '見積もり依頼待ち' => 'bg-yellow-600/30 text-yellow-200 border-yellow-500/50',
                                     '見積もり結果待ち' => 'bg-purple-600/30 text-purple-200 border-purple-500/50',
+                                    '受注確定' => 'bg-emerald-600/30 text-emerald-200 border-emerald-500/50',
+                                    '入荷登録情報待ち' => 'bg-pink-600/30 text-pink-200 border-pink-500/50',
+                                    '出荷情報登録待ち' => 'bg-cyan-600/30 text-cyan-200 border-cyan-500/50',
+                                    '出荷情報待ち' => 'bg-indigo-600/30 text-indigo-200 border-indigo-500/50',
+                                    '納品済み' => 'bg-teal-600/30 text-teal-200 border-teal-500/50',
                                     '物品入荷待ち' => 'bg-pink-600/30 text-pink-200 border-pink-500/50',
                                     '失注' => 'bg-slate-700 text-slate-400 border-slate-600',
+                                    '案件完了' => 'bg-green-600/30 text-green-200 border-green-500/50',
                                     '完了' => 'bg-green-600/30 text-green-200 border-green-500/50',
                                     default => 'bg-slate-700 text-slate-200 border-slate-500',
                                 };
@@ -77,25 +83,74 @@
                 <div class="lg:col-span-2 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 overflow-hidden shadow-2xl flex flex-col h-full">
                     <div class="px-6 py-5 border-b border-white/5 bg-white/5">
                         <h3 class="font-bold text-slate-300 text-sm flex items-center gap-2">
-                            <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <span class="text-xs font-normal text-slate-500">直近の操作</span>
+                            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                            <span class="text-xs font-normal text-slate-400">通知</span>
+                            @if($notifications->where('type', 'incoming')->isNotEmpty())
+                                <span class="min-w-[18px] h-[18px] px-1 bg-amber-500 text-black text-[10px] font-black rounded-full flex items-center justify-center">{{ $notifications->where('type', 'incoming')->count() }}</span>
+                            @endif
+                            @if($notifications->whereNotNull('dismiss_url')->isNotEmpty())
+                                <form action="{{ route('notifications.dismiss_all') }}" method="POST" class="ml-auto" onsubmit="return confirm('承認・却下の通知をすべてクリアしますか？');">
+                                    @csrf
+                                    <button type="submit" class="text-[10px] font-bold text-slate-500 hover:text-slate-200 bg-white/5 hover:bg-white/10 border border-white/10 px-2.5 py-1 rounded-lg transition-all">
+                                        すべてクリア
+                                    </button>
+                                </form>
+                            @endif
                         </h3>
                     </div>
-                    
-                    <div class="p-4 flex-grow overflow-y-auto">
-                        <div class="space-y-4">
-                            @foreach($logs as $log)
-                                <div class="flex gap-3 items-start">
-                                    <div class="w-1.5 h-1.5 rounded-full bg-slate-600 mt-1.5 shrink-0"></div>
-                                    <div>
-                                        <p class="text-[11px] text-slate-300 leading-snug">
-                                            <span class="font-bold text-slate-400 mr-1">{{ $log->causer?->name ?? 'System' }}:</span>
-                                            {{ $log->description }}
-                                        </p>
-                                        <p class="text-[9px] text-slate-500 font-mono mt-0.5">{{ $log->created_at->diffForHumans() }}</p>
+
+                    <div class="p-4 flex-grow overflow-y-auto max-h-[560px]">
+                        <div class="space-y-3">
+                            @forelse($notifications as $notification)
+                                @php
+                                    $dotColor = match($notification['type']) {
+                                        'incoming' => 'bg-amber-400',
+                                        'approved' => 'bg-green-400',
+                                        'rejected' => 'bg-red-400',
+                                        default    => 'bg-slate-600',
+                                    };
+                                @endphp
+                                @php
+                                    $typeLabel = match($notification['type']) {
+                                        'incoming' => '申請',
+                                        'approved' => '承認',
+                                        'rejected' => '却下',
+                                        default    => '通知',
+                                    };
+                                    $labelColor = match($notification['type']) {
+                                        'incoming' => 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                                        'approved' => 'bg-green-500/20 text-green-300 border-green-500/40',
+                                        'rejected' => 'bg-red-500/20 text-red-300 border-red-500/40',
+                                        default    => 'bg-slate-700 text-slate-300 border-slate-600',
+                                    };
+                                @endphp
+                                <div class="bg-black/20 border border-white/10 rounded-2xl p-4 hover:bg-white/5 hover:border-white/20 transition-all group">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="w-2.5 h-2.5 rounded-full {{ $dotColor }} shrink-0 {{ $notification['type'] === 'incoming' ? 'animate-pulse' : '' }}"></span>
+                                        <span class="px-2.5 py-0.5 border rounded-full text-xs font-black tracking-wider {{ $labelColor }}">{{ $typeLabel }}</span>
+                                        <span class="text-xs text-slate-500 font-mono ml-auto">{{ $notification['time']->diffForHumans() }}</span>
+                                        @if(!empty($notification['dismiss_url']))
+                                            <form action="{{ $notification['dismiss_url'] }}" method="POST">
+                                                @csrf
+                                                <button type="submit" title="この通知を消す"
+                                                        class="p-1 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                                </button>
+                                            </form>
+                                        @endif
                                     </div>
+                                    <a href="{{ $notification['url'] }}" class="block">
+                                        <p class="text-[15px] font-bold text-slate-100 leading-relaxed group-hover:text-white transition-colors">
+                                            {{ $notification['message'] }}
+                                        </p>
+                                    </a>
                                 </div>
-                            @endforeach
+                            @empty
+                                <div class="flex flex-col items-center justify-center py-10 opacity-50">
+                                    <svg class="w-8 h-8 text-slate-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                                    <p class="text-xs text-slate-400">新しい通知はありません。</p>
+                                </div>
+                            @endforelse
                         </div>
                     </div>
                 </div>

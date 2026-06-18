@@ -27,9 +27,19 @@ class CustomerController extends Controller
     }
     public function store(Request $request)
     {
+        // 顧客登録は System Admin のみ
+        Gate::authorize('system_admin');
+
         $request->validate(['name' => 'required|string|max:255']);
-        
-        Customer::create(['name' => $request->name]);
+
+        // 依頼元企業番号を通番で採番（同時登録でも重複しないようロックして採番）
+        \DB::transaction(function () use ($request) {
+            $nextNumber = (Customer::query()->lockForUpdate()->max('customer_number') ?? 0) + 1;
+            Customer::create([
+                'name' => $request->name,
+                'customer_number' => $nextNumber,
+            ]);
+        });
         
         activity()->causedBy($request->user())->log('顧客「' . $request->name . '」を新規登録しました');
 
@@ -39,8 +49,8 @@ class CustomerController extends Controller
     // 更新（名前変更）処理
     public function update(Request $request, Customer $customer)
     {
-        // ✅ セキュリティ修正5：顧客更新権限チェック（管理者のみ）
-        Gate::authorize('admin');
+        // 顧客情報の変更は System Admin のみ
+        Gate::authorize('system_admin');
         
         $request->validate(['name' => 'required|string|max:255']);
         
@@ -55,7 +65,7 @@ class CustomerController extends Controller
     // 削除処理
     public function destroy(Request $request, Customer $customer)
     {
-        Gate::authorize('admin');
+        Gate::authorize('system_admin');
         $name = $customer->name;
         $customer->delete();
 
