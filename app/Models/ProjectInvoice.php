@@ -9,6 +9,7 @@ class ProjectInvoice extends Model
     protected $fillable = [
         'project_id',
         'sequence',
+        'billing_month',
         'billing_date',
         'billing_count',
         'billing_shipping_cost',

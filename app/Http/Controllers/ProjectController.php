@@ -234,7 +234,11 @@ class ProjectController extends Controller
 
                 $pairKey = $est->partner_name . '|' . $newCost;
                 if (isset($resultingPairs[$pairKey])) {
-                    return back()->with('error', '「' . $est->partner_name . '」で金額が同じ見積もり（¥' . number_format($newCost) . '）が重複しています。会社名と金額が完全に同じ見積もりは登録できません。金額を変えてください。');
+                    $dupMessage = '「' . $est->partner_name . '」で金額が同じ見積もり（¥' . number_format($newCost) . '）が重複しています。会社名と金額が完全に同じ見積もりは登録できません。金額を変えてください。';
+                    if ($request->expectsJson()) {
+                        return response()->json(['ok' => false, 'message' => $dupMessage], 422);
+                    }
+                    return back()->with('error', $dupMessage);
                 }
                 $resultingPairs[$pairKey] = true;
             }
@@ -311,6 +315,10 @@ class ProjectController extends Controller
         // STEP 4: 採用見積もりが確定したら、各依頼先の受注/失注を反映（ID で特定）
         if ($selectedEstimate) {
             $this->applyEstimateResults($project, $selectedEstimate->id);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'message' => '保存しました。']);
         }
 
         return back()->with('success', '情報を更新しました。');
@@ -772,17 +780,40 @@ class ProjectController extends Controller
     {
         Gate::authorize('admin');
 
+        // 出荷が全て終わるまで（出荷情報登録待ち／出荷情報待ち）は編集可。それ以降は不可
+        if (!in_array($project->status, ['出荷情報登録待ち', '出荷情報待ち'], true)) {
+            return back()->with('error', 'この段階では出荷予定を編集できません。');
+        }
+
         $validated = $request->validate([
-            'planned_date'  => 'required|date',
-            'planned_count' => 'required|integer|min:1',
+            'shipments'                 => 'required|array|min:1',
+            'shipments.*.planned_date'  => 'required|date',
+            'shipments.*.planned_count' => 'required|integer|min:1',
         ], [
-            'planned_date.required'  => '出荷予定日を入力してください。',
-            'planned_count.required' => '出荷予定台数を入力してください。',
+            'shipments.required'                 => '出荷予定を1件以上入力してください。',
+            'shipments.*.planned_date.required'  => '出荷予定日を入力してください。',
+            'shipments.*.planned_count.required' => '出荷予定台数を入力してください。',
+            'shipments.*.planned_count.min'      => '出荷予定台数は1以上で入力してください。',
         ]);
 
-        $project->shipments()->create($validated);
+        // 追加分の合計が受注台数を超えないかチェック（既存の予定との合算）
+        $addingTotal  = array_sum(array_column($validated['shipments'], 'planned_count'));
+        $currentTotal = (int) $project->shipments()->sum('planned_count');
+        $orderedCount = (int) $project->device_count;
 
-        return back()->with('success', '出荷予定を追加しました。');
+        if ($orderedCount > 0 && $currentTotal + $addingTotal > $orderedCount) {
+            $remain = $orderedCount - $currentTotal;
+            return back()->with('error', '出荷予定台数の合計が受注台数（' . number_format($orderedCount) . '台）を超えています。今回追加できる残りは ' . number_format(max($remain, 0)) . ' 台です。');
+        }
+
+        foreach ($validated['shipments'] as $row) {
+            $project->shipments()->create([
+                'planned_date'  => $row['planned_date'],
+                'planned_count' => $row['planned_count'],
+            ]);
+        }
+
+        return back()->with('success', count($validated['shipments']) . '件の出荷予定を追加しました。');
     }
 
     /**
@@ -795,6 +826,12 @@ class ProjectController extends Controller
         if ($shipment->project_id !== $project->id) {
             abort(404);
         }
+
+        // 出荷が全て終わるまで（出荷情報登録待ち／出荷情報待ち）は削除可。それ以降は不可
+        if (!in_array($project->status, ['出荷情報登録待ち', '出荷情報待ち'], true)) {
+            return back()->with('error', 'この段階では出荷予定を削除できません。');
+        }
+
         $shipment->delete();
 
         return back()->with('success', '出荷予定を削除しました。');
@@ -893,49 +930,61 @@ class ProjectController extends Controller
         Gate::authorize('admin');
 
         $validated = $request->validate([
-            'billing_date'          => 'required|date',
-            'billing_count'         => 'required|integer|min:1',
-            'billing_shipping_cost' => 'nullable|numeric|min:0',
+            'billing_month' => 'required|date_format:Y-m',
+            'billing_date'  => 'required|date',
         ], [
-            'billing_date.required'  => '請求日を選択してください。',
-            'billing_count.required' => '請求台数を入力してください。',
-            'billing_count.min'      => '請求台数は1以上で入力してください。',
+            'billing_month.required'    => '請求対象月を選択してください。',
+            'billing_month.date_format' => '請求対象月の形式が正しくありません。',
+            'billing_date.required'     => '請求日を選択してください。',
         ]);
 
-        // 既に請求済みの台数 ＋ 今回の請求台数 が受注台数を超えないかチェック
-        $alreadyBilled = (int) $project->invoices()->sum('billing_count');
-        $orderedCount  = (int) $project->device_count;
-        if ($orderedCount > 0 && $alreadyBilled + (int) $validated['billing_count'] > $orderedCount) {
-            $remain = $orderedCount - $alreadyBilled;
-            return back()->with('error', '請求台数が受注台数を超えています。今回請求できる残りは ' . number_format(max($remain, 0)) . ' 台です。');
+        $billingMonth = $validated['billing_month'];
+
+        // 同じ月を二重に請求しない
+        if ($project->invoices()->where('billing_month', $billingMonth)->exists()) {
+            return back()->with('error', $billingMonth . ' は既に請求済みです。');
         }
 
-        // 当月の納期情報（出荷）が登録されていないと請求書を出力できない（仕様：STEP8当月データ必須）
-        $billMonth = \Carbon\Carbon::parse($validated['billing_date'])->format('Y-m');
-        $hasDeliveryThisMonth = $project->deliveries()->get()
-            ->contains(fn ($d) => \Carbon\Carbon::parse($d->shipped_date)->format('Y-m') === $billMonth);
-        if (!$hasDeliveryThisMonth) {
-            return back()->with('error', '請求日（' . $billMonth . '）の納期情報（出荷）が登録されていません。STEP 8 で当月の出荷を登録してから請求してください。');
+        // 請求対象月に出荷（STEP 8 納期情報）した分を集計し、今回の請求台数とする
+        $monthDeliveries = $project->deliveries()->get()
+            ->filter(fn ($d) => \Carbon\Carbon::parse($d->shipped_date)->format('Y-m') === $billingMonth);
+
+        if ($monthDeliveries->isEmpty()) {
+            return back()->with('error', $billingMonth . ' の出荷（STEP 8 納期情報）が登録されていません。出荷を登録してから請求してください。');
+        }
+
+        $billingCount        = (int) $monthDeliveries->sum('shipped_count');
+        $billingShippingCost = (float) $monthDeliveries->sum('shipping_cost');
+
+        if ($billingCount < 1) {
+            return back()->with('error', $billingMonth . ' の出荷台数が0台のため請求できません。STEP 8 の出荷台数をご確認ください。');
+        }
+
+        // 累計請求台数が受注台数を超えないかチェック
+        $alreadyBilled = (int) $project->invoices()->sum('billing_count');
+        $orderedCount  = (int) $project->device_count;
+        if ($orderedCount > 0 && $alreadyBilled + $billingCount > $orderedCount) {
+            return back()->with('error', '請求台数の合計が受注台数（' . number_format($orderedCount) . '台）を超えます。出荷台数をご確認ください。');
         }
 
         // 金額計算（税込）：作業費（単価×今回台数）＋ 出荷費用 ＋ 消費税10%
-        $unitPrice     = (float) ($project->final_price ?? 0);
-        $shippingCost  = $validated['billing_shipping_cost'] !== null ? (float) $validated['billing_shipping_cost'] : 0;
-        $subtotal      = $unitPrice * (int) $validated['billing_count'] + $shippingCost;
-        $amountTotal   = $subtotal + (int) floor($subtotal * 0.10);
+        $unitPrice   = (float) ($project->final_price ?? 0);
+        $subtotal    = $unitPrice * $billingCount + $billingShippingCost;
+        $amountTotal = $subtotal + (int) floor($subtotal * 0.10);
 
         // 請求履歴を1件追加（案件内の通番＝枝番）
         $sequence = (int) $project->invoices()->max('sequence') + 1;
         $invoice = $project->invoices()->create([
             'sequence'              => $sequence,
+            'billing_month'         => $billingMonth,
             'billing_date'          => $validated['billing_date'],
-            'billing_count'         => $validated['billing_count'],
-            'billing_shipping_cost' => $validated['billing_shipping_cost'] ?? null,
+            'billing_count'         => $billingCount,
+            'billing_shipping_cost' => $billingShippingCost,
             'amount_total'          => $amountTotal,
         ]);
 
         // ===== 終了ルーティン（2つの完了フラグで案件完了を判定）=====
-        $billedTotal = $alreadyBilled + (int) $validated['billing_count'];
+        $billedTotal = $alreadyBilled + $billingCount;
         // 請求完了フラグ：全請求書を出力（累計請求台数＝受注台数）
         $billingDone = $orderedCount > 0 && $billedTotal >= $orderedCount;
         // 入荷完了フラグ：端末（入荷数＝受注台数）＋ 付属品（各入荷数＝登録台数）
@@ -944,19 +993,26 @@ class ProjectController extends Controller
             ->every(fn ($a) => (int) $a->arrived_count >= (int) $a->planned_count);
         $arrivalDone = $terminalArrived && $accessoriesArrived;
 
+        // PDF 用に今回の請求内容を案件にも反映
+        $update = [
+            'billing_date'          => $validated['billing_date'],
+            'billing_count'         => $billingCount,
+            'billing_shipping_cost' => $billingShippingCost,
+        ];
+
         $completionNote = '';
         if ($billingDone && $arrivalDone) {
             // 両フラグOK → 案件完了
-            $validated['status'] = '案件完了';
+            $update['status'] = '案件完了';
         } else {
-            $validated['status'] = '納品済み';
+            $update['status'] = '納品済み';
             // 請求は完了したが入荷が未完了の場合は注意喚起（仕様：入荷画面へ）
             if ($billingDone && !$arrivalDone) {
                 $arrivedTotal = (int) $project->arrivals()->sum('arrived_count');
                 $completionNote = '※ 全数の請求は完了しましたが、入荷が未完了（' . number_format($arrivedTotal) . '/' . number_format($orderedCount) . '台）のため案件完了になりません。STEP 6 で残りの入荷を登録してください。';
             }
         }
-        $project->update($validated);
+        $project->update($update);
         $project->load(['customer', 'ownPic']);
 
         // 帳票番号：分納案件は1回目から枝番（-01, -02 …）を付ける。一括納品は枝番なし。

@@ -176,6 +176,17 @@
                                 @php
                                     $billedTotal = (int) $project->invoices->sum('billing_count');
                                     $billRemaining = (int) $project->device_count - $billedTotal;
+
+                                    // 出荷（STEP 8）を月ごとに集計
+                                    $deliveryMonths = $project->deliveries
+                                        ->groupBy(fn($d) => \Carbon\Carbon::parse($d->shipped_date)->format('Y-m'))
+                                        ->map(fn($group) => [
+                                            'count' => (int) $group->sum('shipped_count'),
+                                            'cost'  => (float) $group->sum('shipping_cost'),
+                                        ])
+                                        ->sortKeys();
+                                    $billedMonths = $project->invoices->pluck('billing_month')->filter()->values()->all();
+                                    $unbilledMonths = $deliveryMonths->reject(fn($v, $m) => in_array($m, $billedMonths, true));
                                 @endphp
 
                                 {{-- 請求履歴 --}}
@@ -200,27 +211,63 @@
                                     </div>
                                 @endif
 
+                                {{-- 月ごとの出荷集計 --}}
+                                @if($deliveryMonths->isNotEmpty())
+                                    <div class="bg-black/20 border border-white/10 rounded-2xl p-5 mb-5">
+                                        <span class="text-sm font-bold text-slate-300">月ごとの出荷（請求対象）</span>
+                                        <div class="space-y-2 mt-3">
+                                            @foreach($deliveryMonths as $month => $info)
+                                                @php $isBilled = in_array($month, $billedMonths, true); @endphp
+                                                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 bg-white/5 rounded-xl px-4 py-2.5 border border-white/10 text-sm">
+                                                    <span class="text-slate-200 font-bold">{{ \Carbon\Carbon::createFromFormat('Y-m', $month)->format('Y年n月') }}</span>
+                                                    <span class="font-mono text-white">{{ number_format($info['count']) }} 台</span>
+                                                    <span class="font-mono text-slate-400">出荷費用 ¥{{ number_format($info['cost']) }}</span>
+                                                    @if($isBilled)
+                                                        <span class="ml-auto text-[11px] bg-green-500/20 text-green-300 border border-green-500/40 px-2.5 py-0.5 rounded-full">請求済み</span>
+                                                    @else
+                                                        <span class="ml-auto text-[11px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-full">未請求</span>
+                                                    @endif
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @endif
+
                                 @if($billRemaining > 0)
-                                <form action="{{ route('projects.invoice_pdf', $project) }}" method="POST" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                                    @csrf
-                                    <div>
-                                        <label class="block text-xs font-bold text-slate-400 mb-1.5">請求日 <span class="text-red-400">*</span></label>
-                                        <input type="date" name="billing_date" value="{{ now()->format('Y-m-d') }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 [color-scheme:dark]">
+                                    @if($unbilledMonths->isNotEmpty())
+                                    <form action="{{ route('projects.invoice_pdf', $project) }}" method="POST"
+                                          x-data="{ months: {{ \Illuminate\Support\Js::from($unbilledMonths->map(fn($v) => ['count' => $v['count'], 'cost' => $v['cost']])) }}, selected: '{{ $unbilledMonths->keys()->first() }}' }">
+                                        @csrf
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                            <div>
+                                                <label class="block text-xs font-bold text-slate-400 mb-1.5">請求対象月 <span class="text-red-400">*</span></label>
+                                                <select name="billing_month" x-model="selected" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 focus:ring-rose-500 cursor-pointer">
+                                                    @foreach($unbilledMonths as $month => $info)
+                                                        <option value="{{ $month }}">{{ \Carbon\Carbon::createFromFormat('Y-m', $month)->format('Y年n月') }}（{{ number_format($info['count']) }}台）</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-bold text-slate-400 mb-1.5">請求日 <span class="text-red-400">*</span></label>
+                                                <input type="date" name="billing_date" value="{{ now()->format('Y-m-d') }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 [color-scheme:dark]">
+                                            </div>
+                                            <button type="submit" class="bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg shadow-rose-900/30 flex items-center justify-center gap-2">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                                請求書を生成
+                                            </button>
+                                        </div>
+                                        <p class="text-[11px] text-slate-500 mt-2">
+                                            請求台数 <span class="text-rose-300 font-mono" x-text="months[selected] ? months[selected].count : 0"></span> 台
+                                            ／ 出荷費用 ¥<span class="text-rose-300 font-mono" x-text="months[selected] ? Number(months[selected].cost).toLocaleString() : 0"></span>（自動集計）
+                                        </p>
+                                    </form>
+                                    <p class="text-xs text-slate-500 mt-3">請求対象月を選ぶと、その月に出荷（STEP 8）した分が自動で請求台数になります。全数の請求＋全数の入荷が完了するとステータスが「案件完了」になります。</p>
+                                    @else
+                                    <div class="bg-amber-500/10 border border-amber-500/30 rounded-2xl py-4 text-center">
+                                        <span class="text-amber-300 font-bold text-sm">未請求の出荷がありません。</span>
+                                        <p class="text-xs text-slate-400 mt-1">STEP 8 で出荷（納期情報）を登録すると、その月の分を請求できます。</p>
                                     </div>
-                                    <div>
-                                        <label class="block text-xs font-bold text-slate-400 mb-1.5">今回の請求台数 <span class="text-red-400">*</span> <span class="text-[10px] text-slate-500">（残 {{ number_format($billRemaining) }}）</span></label>
-                                        <input type="number" name="billing_count" value="{{ $billRemaining }}" min="1" max="{{ $billRemaining }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 focus:ring-rose-500 font-mono">
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs font-bold text-slate-400 mb-1.5">出荷費用（円） <span class="text-[10px] text-slate-500">（初期値：出荷費用）</span></label>
-                                        <input type="number" name="billing_shipping_cost" value="{{ $project->shipping_cost !== null ? (int) $project->shipping_cost : '' }}" min="0" class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 focus:ring-rose-500 font-mono">
-                                    </div>
-                                    <button type="submit" class="bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg shadow-rose-900/30 flex items-center justify-center gap-2">
-                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                                        請求書を生成
-                                    </button>
-                                </form>
-                                <p class="text-xs text-slate-500 mt-3">月ごとに分けて請求できます。請求には当月の納期情報（STEP 8）の登録が必要です。全数の請求＋全数の入荷が完了するとステータスが「案件完了」になります。</p>
+                                    @endif
                                 @else
                                 <div class="bg-green-500/10 border border-green-500/30 rounded-2xl py-4 text-center">
                                     <span class="text-green-300 font-bold">全数（{{ number_format($project->device_count) }}台）の請求が完了しました。</span>
@@ -300,7 +347,7 @@
                                             @csrf
                                             <div>
                                                 <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷日 <span class="text-red-400">*</span></label>
-                                                <input type="date" name="shipped_date" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]">
+                                                <input type="date" name="shipped_date" value="{{ now()->format('Y-m-d') }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]">
                                             </div>
                                             <div>
                                                 <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷台数</label>
@@ -326,16 +373,20 @@
                     <div class="relative mb-12" x-data="{ open: {{ $orderRank == 3 ? 'true' : 'false' }} }">
                         <div class="absolute -left-4 -top-4 bg-indigo-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-indigo-400/50">STEP 7</div>
                         <div class="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-8 shadow-2xl">
-                            <h3 class="text-xl font-bold text-white flex items-center gap-3" :class="open ? 'mb-6' : ''">
+                            <h3 @click="open = !open" class="text-xl font-bold text-white flex items-center gap-3 cursor-pointer select-none" :class="open ? 'mb-6' : ''">
                                 <span class="w-2 h-8 bg-indigo-500 rounded-full"></span>出荷情報
                                 <span class="text-xs bg-white/10 text-slate-300 border border-white/20 px-2.5 py-0.5 rounded-full">{{ $isSplitDelivery ? '分納' : '一括納品' }}</span>
                                 @if($orderRank > 3)<span class="text-xs bg-green-500/20 text-green-300 border border-green-500/40 px-2.5 py-0.5 rounded-full">確定済み</span>@endif
-                                <button type="button" @click="open = !open" class="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition-all">
+                                <span class="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition-all">
                                     <svg class="w-5 h-5 transition-transform duration-300" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
-                                </button>
+                                </span>
                             </h3>
                             <div x-show="open" class="space-y-5">
-                                @php $remaining = (int) $project->device_count - (int) $shipmentTotal; @endphp
+                                @php
+                                    $remaining = (int) $project->device_count - (int) $shipmentTotal;
+                                    // 出荷予定の編集（追加・削除）は、確定後でも出荷が全て終わるまで（納品済み前）可能
+                                    $canEditShipments = $orderRank >= 3 && $orderRank < 5;
+                                @endphp
                                 <div class="bg-black/20 border border-white/10 rounded-2xl p-5">
                                     <div class="flex items-center justify-between mb-3">
                                         <span class="text-sm font-bold text-slate-300">出荷予定{{ $isSplitDelivery ? '（分割して登録）' : '' }}</span>
@@ -349,7 +400,7 @@
                                                 <div class="flex items-center justify-between bg-white/5 rounded-xl px-4 py-2.5 border border-white/10">
                                                     <span class="text-sm text-slate-200">{{ \Carbon\Carbon::parse($sh->planned_date)->format('Y/m/d') }}</span>
                                                     <span class="text-sm font-mono text-white">{{ number_format($sh->planned_count) }} 台</span>
-                                                    @if($orderRank == 3)
+                                                    @if($canEditShipments)
                                                         <form action="{{ route('projects.shipments.delete', [$project, $sh]) }}" method="POST" onsubmit="return confirm('この出荷予定を削除しますか？');">
                                                             @csrf @method('DELETE')
                                                             <button type="submit" class="text-red-400 text-xs hover:underline">削除</button>
@@ -364,32 +415,80 @@
                                         <p class="text-xs text-slate-500 italic mb-3">出荷予定がまだありません。</p>
                                     @endif
 
-                                    @if($orderRank == 3)
-                                        @if($remaining > 0)
-                                        <form action="{{ route('projects.shipments.add', $project) }}" method="POST" class="flex flex-col md:flex-row items-stretch md:items-end gap-3 pt-3 border-t border-white/10">
+                                    @if($canEditShipments && $remaining > 0)
+                                        <form action="{{ route('projects.shipments.add', $project) }}" method="POST" class="pt-4 border-t border-white/10"
+                                              x-data="shipmentPlanner({ remaining: {{ $remaining }}, isSplit: {{ $isSplitDelivery ? 'true' : 'false' }} })">
                                             @csrf
-                                            <div class="flex-1">
-                                                <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷予定日</label>
-                                                <input type="date" name="planned_date" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]">
+                                            <p class="text-[11px] font-bold text-slate-400 mb-3">カレンダーの日付をクリックすると、出荷予定の入力欄が追加されます（残 {{ number_format($remaining) }} 台）</p>
+                                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                                {{-- カレンダー --}}
+                                                <div class="bg-black/30 border border-white/10 rounded-2xl p-4 select-none">
+                                                    <div class="flex items-center justify-between mb-3">
+                                                        <button type="button" @click="prevMonth()" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 text-lg">‹</button>
+                                                        <span class="text-sm font-bold text-white" x-text="monthLabel"></span>
+                                                        <button type="button" @click="nextMonth()" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 text-lg">›</button>
+                                                    </div>
+                                                    <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-500 mb-1">
+                                                        <template x-for="w in ['日','月','火','水','木','金','土']" :key="w"><span x-text="w"></span></template>
+                                                    </div>
+                                                    <div class="grid grid-cols-7 gap-1">
+                                                        <template x-for="(d, i) in cells" :key="i">
+                                                            <div>
+                                                                <template x-if="d">
+                                                                    <button type="button" @click="toggleDate(d)"
+                                                                            :class="isSelected(d) ? 'bg-indigo-600 text-white font-bold shadow' : 'text-slate-300 hover:bg-white/10'"
+                                                                            class="w-full aspect-square rounded-lg text-xs transition-colors" x-text="d"></button>
+                                                                </template>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                                {{-- 選択した日付の入力欄 --}}
+                                                <div class="flex flex-col">
+                                                    <template x-if="selectedDates.length === 0">
+                                                        <p class="text-xs text-slate-500 italic py-4">日付を選択すると、ここに台数の入力欄が表示されます。</p>
+                                                    </template>
+                                                    <div class="space-y-2">
+                                                        <template x-for="(d, i) in selectedDates" :key="d">
+                                                            <div class="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2 border border-white/10">
+                                                                <span class="text-sm text-slate-200 flex-1" x-text="formatDate(d)"></span>
+                                                                <input type="hidden" :name="'shipments[' + i + '][planned_date]'" :value="d">
+                                                                <input type="number" min="1" x-model="selected[d]" :name="'shipments[' + i + '][planned_count]'"
+                                                                       class="w-24 bg-black/40 border-white/30 rounded-lg text-white px-3 py-1.5 text-sm font-mono text-right" placeholder="台数">
+                                                                <span class="text-xs text-slate-500">台</span>
+                                                                <button type="button" @click="toggleDate(d)" class="text-red-400 text-xl leading-none hover:text-red-300">&times;</button>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                    <div class="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-white/10">
+                                                        <span class="text-xs font-mono" :class="total > remaining ? 'text-red-400' : 'text-slate-400'">
+                                                            合計 <span x-text="total"></span> / 残 {{ number_format($remaining) }} 台
+                                                        </span>
+                                                        <button type="submit" :disabled="!valid"
+                                                                class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-8 rounded-xl transition-all text-sm">保存</button>
+                                                    </div>
+                                                    <p class="text-[11px] text-red-400 mt-2" x-show="total > remaining" x-cloak>残り台数（{{ number_format($remaining) }}台）を超えています。</p>
+                                                </div>
                                             </div>
-                                            <div class="w-full md:w-44">
-                                                <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷予定台数（残 {{ number_format($remaining) }}）</label>
-                                                <input type="number" name="planned_count" min="1" max="{{ $remaining }}" value="{{ $isSplitDelivery ? '' : $remaining }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm font-mono">
-                                            </div>
-                                            <button type="submit" class="bg-white/10 hover:bg-white/20 text-indigo-300 font-bold py-2 px-5 rounded-xl border border-white/20 transition-all text-sm whitespace-nowrap">予定を追加</button>
                                         </form>
-                                        @endif
+                                    @endif
+
+                                    @if($orderRank == 3)
                                         <form action="{{ route('projects.shipments.confirm', $project) }}" method="POST" class="mt-4">
                                             @csrf
                                             @if($shipmentTotal >= 1 && $shipmentTotal <= $project->device_count)
                                                 <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg transition-all">出荷予定を確定（出荷情報待ちへ）</button>
                                                 @if($shipmentTotal < $project->device_count)
-                                                    <p class="text-[11px] text-amber-400 text-center mt-2">全数（{{ number_format($project->device_count) }}台）に未達ですが、分納のため今ある分で確定して次へ進めます。残りは後で追加・再確定できます。</p>
+                                                    <p class="text-[11px] text-amber-400 text-center mt-2">全数（{{ number_format($project->device_count) }}台）に未達ですが、分納のため今ある分で確定して次へ進めます。残りは確定後もこの画面から追加できます。</p>
                                                 @endif
                                             @else
                                                 <div class="w-full bg-black/20 border border-white/10 rounded-xl text-slate-500 py-3 text-center text-sm">出荷予定を1件以上追加すると確定できます（受注台数を超える登録は不可）</div>
                                             @endif
                                         </form>
+                                    @endif
+
+                                    @if($orderRank == 4 && $remaining > 0)
+                                        <p class="text-[11px] text-amber-400 mt-3">確定済みですが、分納の残り {{ number_format($remaining) }} 台を上のフォームから追加できます。</p>
                                     @endif
                                 </div>
                             </div>
@@ -495,7 +594,7 @@
                                                 @csrf
                                                 <div class="flex-1">
                                                     <label class="block text-[11px] font-bold text-slate-400 mb-1">入荷日</label>
-                                                    <input type="date" name="arrived_date" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]">
+                                                    <input type="date" name="arrived_date" value="{{ now()->format('Y-m-d') }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]">
                                                 </div>
                                                 <div class="w-full md:w-40">
                                                     <label class="block text-[11px] font-bold text-slate-400 mb-1">入荷台数</label>
@@ -511,7 +610,7 @@
                                             @csrf
                                             <div>
                                                 <label class="block text-xs font-bold text-slate-400 mb-1.5">入荷日 <span class="text-red-400">*</span></label>
-                                                <input type="date" name="arrival_date" value="{{ $project->arrival_date }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 [color-scheme:dark]">
+                                                <input type="date" name="arrival_date" value="{{ $project->arrival_date ?: now()->format('Y-m-d') }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 [color-scheme:dark]">
                                             </div>
                                             <div>
                                                 <label class="block text-xs font-bold text-slate-400 mb-1.5">台数 <span class="text-red-400">*</span></label>
@@ -1079,7 +1178,7 @@
                     {{-- ▼ 各社ごとのカード（表示・編集を個別に切り替え） ▼ --}}
                     <div class="space-y-4" x-show="open" @if($isOrdered) x-cloak @endif>
                         @foreach($project->estimates as $estimate)
-                            <div class="p-6 bg-black/20 rounded-2xl border border-white/5 relative">
+                            <div class="p-6 bg-black/20 rounded-2xl border border-white/5 relative" data-estimate-card="{{ $estimate->id }}">
 
                                 {{-- カードヘッダー：社名 + メモアイコン + 各社の編集ボタン --}}
                                 <div class="flex items-center justify-between mb-4">
@@ -1134,12 +1233,12 @@
                                 </div>
 
                                 @if(empty($estimate->cost_price))
-                                    {{-- ▼ 金額未登録：入力フォームをそのまま表示 ▼ --}}
-                                    <form action="{{ route('projects.update', $project) }}" method="POST" class="space-y-4">
+                                    {{-- ▼ 金額未登録：この社だけ保存（画面を再読込せず保存） ▼ --}}
+                                    <form action="{{ route('projects.update', $project) }}" method="POST" class="space-y-4" data-draft-form data-step3-form>
                                         @csrf @method('PUT')
                                         <div>
                                             <label class="block text-xs font-bold text-slate-400 mb-1">見積金額 (税抜)</label>
-                                            <input type="number" name="estimates[{{ $estimate->id }}][cost_price]" class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 focus:ring-emerald-500">
+                                            <input type="number" name="estimates[{{ $estimate->id }}][cost_price]" value="{{ old('estimates.' . $estimate->id . '.cost_price') }}" data-draft-key="est-{{ $project->id }}-{{ $estimate->id }}-cost" class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 focus:ring-emerald-500">
                                         </div>
                                         <div>
                                             <label class="block text-xs font-bold text-slate-400 mb-1">備考</label>
@@ -1166,10 +1265,10 @@
                                                     {{-- 備考保存済み：表示のみ（修正は「編集する」から） --}}
                                                     <div class="text-slate-300 text-sm whitespace-pre-wrap">{{ $estimate->partner_message }}</div>
                                                 @else
-                                                    {{-- 備考未入力：その場で入力できる --}}
-                                                    <form action="{{ route('projects.update', $project) }}" method="POST" class="flex flex-col gap-2">
+                                                    {{-- 備考未入力：その場で入力（この社だけ保存・画面を再読込せず保存） --}}
+                                                    <form action="{{ route('projects.update', $project) }}" method="POST" class="flex flex-col gap-2" data-draft-form data-step3-form>
                                                         @csrf @method('PUT')
-                                                        <textarea name="estimates[{{ $estimate->id }}][partner_message]" rows="2" placeholder="備考を入力" class="w-full bg-black/40 border-white/20 rounded-xl text-slate-200 px-3 py-2 text-sm placeholder-slate-600 focus:ring-emerald-500"></textarea>
+                                                        <textarea name="estimates[{{ $estimate->id }}][partner_message]" rows="2" placeholder="備考を入力" data-draft-key="est-{{ $project->id }}-{{ $estimate->id }}-msg" class="w-full bg-black/40 border-white/20 rounded-xl text-slate-200 px-3 py-2 text-sm placeholder-slate-600 focus:ring-emerald-500">{{ old('estimates.' . $estimate->id . '.partner_message') }}</textarea>
                                                         <button type="submit" class="self-end bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold py-1.5 px-5 rounded-lg transition-all text-xs">
                                                             備考を保存
                                                         </button>
@@ -1181,7 +1280,7 @@
 
                                     {{-- ▼ 編集モード（この会社だけ） ▼ --}}
                                     <div x-show="editing === {{ $estimate->id }}" x-cloak>
-                                        <form action="{{ route('projects.update', $project) }}" method="POST" class="space-y-4">
+                                        <form action="{{ route('projects.update', $project) }}" method="POST" class="space-y-4" data-step3-form>
                                             @csrf @method('PUT')
                                             <div>
                                                 <label class="block text-xs font-bold text-slate-400 mb-1">見積金額 (税抜)</label>
@@ -1193,7 +1292,7 @@
                                             </div>
                                             <div class="flex gap-3">
                                                 <button type="button" @click="editing = null" class="w-1/3 bg-white/5 hover:bg-white/10 text-white font-bold py-3 rounded-xl transition-all border border-white/10">キャンセル</button>
-                                                <button type="submit" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-lg transition-all">
+                                                <button type="submit" @click="editing = null" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-lg transition-all">
                                                     保存する
                                                 </button>
                                             </div>
@@ -1207,7 +1306,7 @@
 
                 {{-- ▼ 金額変更履歴モーダル（各社ごと） ▼ --}}
                 @foreach($project->estimates as $estimate)
-                    <div x-show="historyModal === {{ $estimate->id }}" x-cloak
+                    <div x-show="historyModal === {{ $estimate->id }}" x-cloak data-estimate-modal="history-{{ $estimate->id }}"
                          class="fixed inset-0 z-50 flex items-center justify-center p-4">
                         {{-- オーバーレイ --}}
                         <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="historyModal = null"></div>
@@ -1268,7 +1367,7 @@
 
                 {{-- ▼ 編集申請モーダル（各社ごと） ▼ --}}
                 @foreach($project->estimates as $estimate)
-                    <div x-show="requestModal === {{ $estimate->id }}" x-cloak
+                    <div x-show="requestModal === {{ $estimate->id }}" x-cloak data-estimate-modal="request-{{ $estimate->id }}"
                          class="fixed inset-0 z-50 flex items-center justify-center p-4">
                         {{-- オーバーレイ --}}
                         <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="requestModal = null"></div>
@@ -1355,7 +1454,7 @@
 
                 {{-- ▼ やり取り記録モーダル（各社ごと） ▼ --}}
                 @foreach($project->estimates as $estimate)
-                    <div x-show="exchangeModal === {{ $estimate->id }}" x-cloak
+                    <div x-show="exchangeModal === {{ $estimate->id }}" x-cloak data-estimate-modal="exchange-{{ $estimate->id }}"
                          class="fixed inset-0 z-50 flex items-center justify-center p-4">
                         {{-- オーバーレイ --}}
                         <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="exchangeModal = null"></div>
@@ -1687,6 +1786,137 @@
             document.getElementById(`display-mode-${stepId}`).classList.remove('hidden');
             document.getElementById(`btn-edit-${stepId}`).classList.remove('hidden');
         }
+
+        // STEP 3: 見積回答を「画面を再読込せず」に保存する（保存した社のカードだけ更新）
+        (function () {
+            const DRAFT_PREFIX = 'estDraft:';
+
+            // 未保存の入力をブラウザに一時保存（万一の再読込でも消えないように）
+            function restoreDrafts(root) {
+                root.querySelectorAll('[data-draft-key]').forEach(el => {
+                    const saved = localStorage.getItem(DRAFT_PREFIX + el.dataset.draftKey);
+                    if (saved !== null && el.value === '') el.value = saved;
+                });
+            }
+
+            // 簡易トースト
+            function toast(message, ok = true) {
+                const t = document.createElement('div');
+                t.textContent = message;
+                t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;'
+                    + 'padding:10px 22px;border-radius:9999px;font-size:13px;font-weight:bold;color:#fff;'
+                    + 'box-shadow:0 8px 24px rgba(0,0,0,.4);'
+                    + (ok ? 'background:#059669;' : 'background:#e11d48;');
+                document.body.appendChild(t);
+                setTimeout(() => t.remove(), 2600);
+            }
+
+            // 入力のたびに一時保存
+            document.addEventListener('input', (e) => {
+                const el = e.target;
+                if (!el.dataset || !el.dataset.draftKey) return;
+                const key = DRAFT_PREFIX + el.dataset.draftKey;
+                if (el.value === '') localStorage.removeItem(key);
+                else localStorage.setItem(key, el.value);
+            });
+
+            // STEP 3 フォームの送信を AJAX 化（画面遷移なし）
+            document.addEventListener('submit', async (e) => {
+                const form = e.target;
+                if (!form.matches || !form.matches('form[data-step3-form]')) return;
+                e.preventDefault();
+
+                const btn = form.querySelector('button[type="submit"]');
+                const label = btn ? btn.textContent : '';
+                if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
+
+                try {
+                    const res = await fetch(form.action, {
+                        method: 'POST',
+                        body: new FormData(form),
+                        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                    });
+
+                    if (res.ok) {
+                        // 保存できたら一時データを破棄
+                        form.querySelectorAll('[data-draft-key]').forEach(el => {
+                            localStorage.removeItem(DRAFT_PREFIX + el.dataset.draftKey);
+                        });
+                        // この社のカード＋関連モーダルだけ最新HTMLに差し替え（他社の入力欄はそのまま）
+                        const card = form.closest('[data-estimate-card]');
+                        if (card) {
+                            const id = card.getAttribute('data-estimate-card');
+                            const html = await (await fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })).text();
+                            const doc = new DOMParser().parseFromString(html, 'text/html');
+                            const swap = (sel) => {
+                                const cur = document.querySelector(sel);
+                                const fr = doc.querySelector(sel);
+                                if (cur && fr) cur.replaceWith(fr);
+                            };
+                            swap('[data-estimate-card="' + id + '"]');
+                            swap('[data-estimate-modal="history-' + id + '"]');
+                            swap('[data-estimate-modal="request-' + id + '"]');
+                            swap('[data-estimate-modal="exchange-' + id + '"]');
+                        }
+                        toast('保存しました');
+                    } else {
+                        const data = await res.json().catch(() => ({}));
+                        toast(data.message || '保存に失敗しました。', false);
+                        if (btn) { btn.disabled = false; btn.textContent = label; }
+                    }
+                } catch (err) {
+                    toast('通信エラーが発生しました。', false);
+                    if (btn) { btn.disabled = false; btn.textContent = label; }
+                }
+            });
+
+            document.addEventListener('DOMContentLoaded', () => restoreDrafts(document));
+        })();
+
+        // STEP 7: 出荷予定のカレンダー入力
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('shipmentPlanner', (config) => ({
+                remaining: config.remaining,
+                isSplit: config.isSplit,
+                viewYear: new Date().getFullYear(),
+                viewMonth: new Date().getMonth(),
+                selected: {}, // 'YYYY-MM-DD' => 台数
+                pad(n) { return String(n).padStart(2, '0'); },
+                get monthLabel() { return this.viewYear + '年 ' + (this.viewMonth + 1) + '月'; },
+                get cells() {
+                    const first = new Date(this.viewYear, this.viewMonth, 1).getDay();
+                    const days = new Date(this.viewYear, this.viewMonth + 1, 0).getDate();
+                    const arr = [];
+                    for (let i = 0; i < first; i++) arr.push(null);
+                    for (let d = 1; d <= days; d++) arr.push(d);
+                    return arr;
+                },
+                dateStr(d) { return this.viewYear + '-' + this.pad(this.viewMonth + 1) + '-' + this.pad(d); },
+                isSelected(d) { return Object.prototype.hasOwnProperty.call(this.selected, this.dateStr(d)); },
+                toggleDate(d) {
+                    const key = (typeof d === 'number') ? this.dateStr(d) : d;
+                    if (Object.prototype.hasOwnProperty.call(this.selected, key)) {
+                        delete this.selected[key];
+                    } else {
+                        this.selected[key] = this.isSplit ? '' : String(this.remaining);
+                    }
+                },
+                get selectedDates() { return Object.keys(this.selected).sort(); },
+                get total() { return this.selectedDates.reduce((s, d) => s + (parseInt(this.selected[d]) || 0), 0); },
+                get valid() {
+                    return this.selectedDates.length > 0
+                        && this.total >= 1 && this.total <= this.remaining
+                        && this.selectedDates.every(d => (parseInt(this.selected[d]) || 0) > 0);
+                },
+                prevMonth() { if (this.viewMonth === 0) { this.viewMonth = 11; this.viewYear--; } else { this.viewMonth--; } },
+                nextMonth() { if (this.viewMonth === 11) { this.viewMonth = 0; this.viewYear++; } else { this.viewMonth++; } },
+                formatDate(str) {
+                    const [y, m, d] = str.split('-').map(Number);
+                    const wd = ['日', '月', '火', '水', '木', '金', '土'][new Date(y, m - 1, d).getDay()];
+                    return y + '/' + this.pad(m) + '/' + this.pad(d) + '（' + wd + '）';
+                },
+            }));
+        });
     </script>
 
     {{-- 削除用フォーム（隠し） --}}
