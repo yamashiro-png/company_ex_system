@@ -53,6 +53,9 @@
         $manualFiles = $project->files->where('category', 'manual');
         $arrivalParamFiles = $project->files->where('category', 'arrival_parameter');
         $shippingFiles = $project->files->where('category', 'shipping_data');
+        // 自動保存された生成PDF
+        $quotationPdfs = $project->files->where('category', 'quotation');
+        $invoicePdfs = $project->files->where('category', 'invoice');
 
         $headerStatusColor = match($project->status) {
             '見積もり待ち' => 'bg-blue-600/30 text-blue-200 border-blue-500/50',
@@ -162,7 +165,7 @@
 
                     {{-- ▼ STEP 9: 請求 ▼ --}}
                     @if($orderRank >= 5)
-                    <div class="relative mb-12" x-data="{ open: {{ in_array($project->status, ['案件完了','完了']) ? 'false' : 'true' }} }">
+                    <div class="relative mb-12" x-data="{ open: true }">
                         <div class="absolute -left-4 -top-4 bg-rose-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-rose-400/50">STEP 9</div>
                         <div class="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-8 shadow-2xl">
                             <h3 class="text-xl font-bold text-white flex items-center gap-3" :class="open ? 'mb-6' : ''">
@@ -211,6 +214,27 @@
                                     </div>
                                 @endif
 
+                                {{-- 保存済みの請求書PDF（生成時に自動保存） --}}
+                                @if($invoicePdfs->count() > 0)
+                                    <div class="bg-black/20 border border-white/10 rounded-2xl p-5 mb-5">
+                                        <span class="text-sm font-bold text-slate-300">保存済みの請求書</span>
+                                        <div class="space-y-2 mt-3">
+                                            @foreach($invoicePdfs as $file)
+                                                <div class="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/10">
+                                                    <span class="text-xs text-slate-300 truncate mr-2">{{ $file->file_name }}</span>
+                                                    <div class="flex gap-3 shrink-0">
+                                                        <a href="{{ route('projects.files.download', $file) }}" class="text-rose-300 text-xs hover:underline bg-rose-500/10 px-3 py-1 rounded">DL</a>
+                                                        <form action="{{ route('projects.files.delete', $file) }}" method="POST" onsubmit="return confirm('この請求書を削除しますか？');">
+                                                            @csrf @method('DELETE')
+                                                            <button type="submit" class="text-red-400 text-xs hover:underline">削除</button>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @endif
+
                                 {{-- 月ごとの出荷集計 --}}
                                 @if($deliveryMonths->isNotEmpty())
                                     <div class="bg-black/20 border border-white/10 rounded-2xl p-5 mb-5">
@@ -235,7 +259,7 @@
 
                                 @if($billRemaining > 0)
                                     @if($unbilledMonths->isNotEmpty())
-                                    <form action="{{ route('projects.invoice_pdf', $project) }}" method="POST"
+                                    <form action="{{ route('projects.invoice_pdf', $project) }}" method="POST" data-invoice-form
                                           x-data="{ months: {{ \Illuminate\Support\Js::from($unbilledMonths->map(fn($v) => ['count' => $v['count'], 'cost' => $v['cost']])) }}, selected: '{{ $unbilledMonths->keys()->first() }}' }">
                                         @csrf
                                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
@@ -281,7 +305,7 @@
 
                     {{-- ▼ STEP 8: 納期情報 ▼ --}}
                     @if($orderRank >= 4)
-                    <div class="relative mb-12" x-data="{ open: {{ $orderRank == 4 ? 'true' : 'false' }} }">
+                    <div class="relative mb-12" x-data="{ open: true }">
                         <div class="absolute -left-4 -top-4 bg-teal-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-teal-400/50">STEP 8</div>
                         <div class="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-8 shadow-2xl">
                             <h3 class="text-xl font-bold text-white flex items-center gap-3" :class="open ? 'mb-6' : ''">
@@ -333,6 +357,11 @@
                                                         <span class="text-slate-200">{{ \Carbon\Carbon::parse($dv->shipped_date)->format('Y/m/d') }}</span>
                                                         <span class="font-mono text-white">{{ $dv->shipped_count !== null ? number_format($dv->shipped_count) . ' 台' : '-' }}</span>
                                                         <span class="font-mono text-slate-400">出荷費用 ¥{{ number_format($dv->shipping_cost ?? 0) }}</span>
+                                                        @if($dv->shipment)
+                                                            <span class="text-[11px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 px-2 py-0.5 rounded-full">
+                                                                予定 {{ \Carbon\Carbon::parse($dv->shipment->planned_date)->format('Y/m/d') }}（{{ number_format($dv->shipment->planned_count) }}台）
+                                                            </span>
+                                                        @endif
                                                         <form action="{{ route('projects.deliveries.delete', [$project, $dv]) }}" method="POST" onsubmit="return confirm('この納期情報を削除しますか？');" class="ml-auto">
                                                             @csrf @method('DELETE')
                                                             <button type="submit" class="text-red-400 text-xs hover:underline">削除</button>
@@ -343,21 +372,45 @@
                                         @else
                                             <p class="text-xs text-slate-500 italic mb-3">出荷記録がまだありません。</p>
                                         @endif
-                                        <form action="{{ route('projects.deliveries.add', $project) }}" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end pt-3 border-t border-white/10">
+                                        <form action="{{ route('projects.deliveries.add', $project) }}" method="POST" class="pt-3 border-t border-white/10"
+                                              x-data="{
+                                                  plans: {{ \Illuminate\Support\Js::from($project->shipments->mapWithKeys(fn($s) => [$s->id => ['date' => \Carbon\Carbon::parse($s->planned_date)->format('Y-m-d'), 'count' => (int) $s->planned_count]])) }},
+                                                  sel: '',
+                                                  shippedDate: '{{ now()->format('Y-m-d') }}',
+                                                  shippedCount: ''
+                                              }">
                                             @csrf
-                                            <div>
-                                                <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷日 <span class="text-red-400">*</span></label>
-                                                <input type="date" name="shipped_date" value="{{ now()->format('Y-m-d') }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]">
+                                            @if($project->shipments->count() > 0)
+                                                <div class="mb-3">
+                                                    <label class="block text-[11px] font-bold text-slate-400 mb-1">対応する出荷予定（選ぶと日付・台数を自動入力）</label>
+                                                    <select name="shipment_id" x-model="sel"
+                                                            @change="if (plans[sel]) { shippedDate = plans[sel].date; shippedCount = plans[sel].count; }"
+                                                            class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm focus:ring-teal-500 cursor-pointer">
+                                                        <option value="">（紐づけない）</option>
+                                                        @foreach($project->shipments as $sh)
+                                                            @php $rec = $project->deliveries->firstWhere('shipment_id', $sh->id); @endphp
+                                                            <option value="{{ $sh->id }}">
+                                                                {{ \Carbon\Carbon::parse($sh->planned_date)->format('Y/m/d') }} 予定 {{ number_format($sh->planned_count) }}台{{ $rec ? '（記録済み）' : '' }}
+                                                            </option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                            @endif
+                                            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                                                <div>
+                                                    <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷日 <span class="text-red-400">*</span></label>
+                                                    <input type="date" name="shipped_date" x-model="shippedDate" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷台数</label>
+                                                    <input type="number" name="shipped_count" x-model="shippedCount" min="1" class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm font-mono">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷費用（円）</label>
+                                                    <input type="number" name="shipping_cost" min="0" class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm font-mono">
+                                                </div>
+                                                <button type="submit" class="bg-teal-600 hover:bg-teal-500 text-white font-bold py-2.5 px-5 rounded-xl transition-all text-sm whitespace-nowrap">納期情報を追加</button>
                                             </div>
-                                            <div>
-                                                <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷台数</label>
-                                                <input type="number" name="shipped_count" min="1" class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm font-mono">
-                                            </div>
-                                            <div>
-                                                <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷費用（円）</label>
-                                                <input type="number" name="shipping_cost" min="0" class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm font-mono">
-                                            </div>
-                                            <button type="submit" class="bg-teal-600 hover:bg-teal-500 text-white font-bold py-2.5 px-5 rounded-xl transition-all text-sm whitespace-nowrap">納期情報を追加</button>
                                         </form>
                                         <p class="text-[11px] text-slate-500 mt-2">1件目を登録するとステータスが「納品済み」に進みます。月ごとの出荷便を分けて登録できます。</p>
                                     </div>
@@ -370,7 +423,7 @@
 
                     {{-- ▼ STEP 7: 出荷情報（分納対応） ▼ --}}
                     @if($orderRank >= 3)
-                    <div class="relative mb-12" x-data="{ open: {{ $orderRank == 3 ? 'true' : 'false' }} }">
+                    <div class="relative mb-12" x-data="{ open: true }">
                         <div class="absolute -left-4 -top-4 bg-indigo-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-indigo-400/50">STEP 7</div>
                         <div class="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-8 shadow-2xl">
                             <h3 @click="open = !open" class="text-xl font-bold text-white flex items-center gap-3 cursor-pointer select-none" :class="open ? 'mb-6' : ''">
@@ -499,7 +552,7 @@
 
                     {{-- ▼ STEP 6: 入荷情報 ▼ --}}
                     @if($orderRank >= 2)
-                    <div class="relative mb-12" x-data="{ open: {{ $orderRank == 2 ? 'true' : 'false' }} }">
+                    <div class="relative mb-12" x-data="{ open: true }">
                         <div class="absolute -left-4 -top-4 bg-pink-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-pink-400/50">STEP 6</div>
                         <div class="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-8 shadow-2xl">
                             <h3 class="text-xl font-bold text-white flex items-center gap-3" :class="open ? 'mb-6' : ''">
@@ -651,7 +704,7 @@
 
                     {{-- ▼ STEP 5: 受注情報 ▼ --}}
                     @if($orderRank >= 1)
-                    <div class="relative mb-12" x-data="{ open: {{ $orderRank == 1 ? 'true' : 'false' }} }">
+                    <div class="relative mb-12" x-data="{ open: true }">
                         <div class="absolute -left-4 -top-4 bg-emerald-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-emerald-400/50">STEP 5</div>
                         <div class="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-8 shadow-2xl">
                             <h3 class="text-xl font-bold text-white flex items-center gap-3" :class="open ? 'mb-6' : ''">
@@ -777,7 +830,7 @@
                 $hasPendingProjectRequest = $project->editRequests->where('status', 'pending')->isNotEmpty();
                 $latestProjectRequest = $project->editRequests->first();
             @endphp
-            <div class="relative" x-data="{ requestModal4: false, historyModal4: false, decisionModal: null, open: {{ $isOrdered ? 'false' : 'true' }} }">
+            <div class="relative" x-data="{ requestModal4: false, historyModal4: false, decisionModal: null, open: {{ $isOrdered ? 'false' : 'true' }} }" data-step4-section>
                 <div class="absolute -left-4 -top-4 bg-purple-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-purple-400/50">STEP 4</div>
                 <div class="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-8 shadow-2xl">
                     <div class="flex items-center justify-between gap-3" :class="open ? 'mb-8' : ''">
@@ -898,11 +951,30 @@
                     @if($project->final_price)
                         <div class="mt-8 pt-6 border-t border-white/10">
                             <a href="{{ route('projects.quotation_pdf', $project) }}"
+                               data-pdf-link data-pdf-name="見積書_{{ $project->documentNumber('M') }}_{{ $project->name }}.pdf"
                                class="w-full bg-white/5 hover:bg-purple-600 text-purple-300 hover:text-white font-bold py-3 rounded-xl border border-purple-500/30 hover:border-purple-500 transition-all flex items-center justify-center gap-2">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                 見積書（PDF）を生成する
                             </a>
-                            <p class="text-xs text-slate-500 text-center mt-2">自社担当者の印鑑が押印された見積書PDFがダウンロードされます。</p>
+                            <p class="text-xs text-slate-500 text-center mt-2">自社担当者の印鑑が押印された見積書PDFがダウンロードされ、案件に自動保存されます。</p>
+
+                            @if($quotationPdfs->count() > 0)
+                                <div class="mt-4 space-y-2">
+                                    <p class="text-xs font-bold text-slate-400">保存済みの見積書</p>
+                                    @foreach($quotationPdfs as $file)
+                                        <div class="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/10">
+                                            <span class="text-xs text-slate-300 truncate mr-2">{{ $file->file_name }}</span>
+                                            <div class="flex gap-3 shrink-0">
+                                                <a href="{{ route('projects.files.download', $file) }}" class="text-purple-300 text-xs hover:underline bg-purple-500/10 px-3 py-1 rounded">DL</a>
+                                                <form action="{{ route('projects.files.delete', $file) }}" method="POST" onsubmit="return confirm('この見積書を削除しますか？');">
+                                                    @csrf @method('DELETE')
+                                                    <button type="submit" class="text-red-400 text-xs hover:underline">削除</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endif
                         </div>
 
                         {{-- ▼ 最終判定：受注・失注 ▼ --}}
@@ -1838,10 +1910,17 @@
                     });
 
                     if (res.ok) {
+                        const data = await res.json().catch(() => ({}));
                         // 保存できたら一時データを破棄
                         form.querySelectorAll('[data-draft-key]').forEach(el => {
                             localStorage.removeItem(DRAFT_PREFIX + el.dataset.draftKey);
                         });
+                        // 全社回答済みになり STEP 4 が新たに表示対象になったら、画面を再描画して STEP 4 を出す
+                        // （この時点では全社が保存済みのため未保存データは無く、安全に再読込できる）
+                        if (data.all_answered && !document.querySelector('[data-step4-section]')) {
+                            window.location.reload();
+                            return;
+                        }
                         // この社のカード＋関連モーダルだけ最新HTMLに差し替え（他社の入力欄はそのまま）
                         const card = form.closest('[data-estimate-card]');
                         if (card) {
@@ -1871,6 +1950,75 @@
             });
 
             document.addEventListener('DOMContentLoaded', () => restoreDrafts(document));
+
+            // 見積書（GETリンク）：生成→PDFダウンロード後に画面を更新し、保存済み一覧へ即反映
+            document.addEventListener('click', async (e) => {
+                const link = e.target.closest && e.target.closest('a[data-pdf-link]');
+                if (!link) return;
+                e.preventDefault();
+                try {
+                    const res = await fetch(link.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    if (res.ok && (res.headers.get('content-type') || '').includes('pdf')) {
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = link.dataset.pdfName || 'document.pdf';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                        window.location.reload();
+                    } else {
+                        window.location.href = link.href; // 想定外時は通常遷移にフォールバック
+                    }
+                } catch (err) {
+                    window.location.href = link.href;
+                }
+            });
+
+            // STEP 9: 請求書生成 → PDFダウンロード後に画面を更新（請求履歴・請求済み表示・完了ステータスを反映）
+            document.addEventListener('submit', async (e) => {
+                const form = e.target;
+                if (!form.matches || !form.matches('form[data-invoice-form]')) return;
+                e.preventDefault();
+
+                const btn = form.querySelector('button[type="submit"]');
+                const label = btn ? btn.innerHTML : '';
+                if (btn) { btn.disabled = true; btn.textContent = '生成中…'; }
+
+                try {
+                    const res = await fetch(form.action, {
+                        method: 'POST',
+                        body: new FormData(form),
+                        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                    });
+
+                    const ctype = res.headers.get('content-type') || '';
+                    if (res.ok && ctype.includes('pdf')) {
+                        // PDF をダウンロード
+                        const blob = await res.blob();
+                        const inv = res.headers.get('X-Invoice-No');
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = '請求書_' + (inv || '') + '.pdf';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                        // 画面を更新（請求履歴・月の請求済み・完了ステータスを反映）
+                        window.location.reload();
+                    } else {
+                        const data = await res.json().catch(() => ({}));
+                        toast(data.message || '請求書の生成に失敗しました。', false);
+                        if (btn) { btn.disabled = false; btn.innerHTML = label; }
+                    }
+                } catch (err) {
+                    toast('通信エラーが発生しました。', false);
+                    if (btn) { btn.disabled = false; btn.innerHTML = label; }
+                }
+            });
         })();
 
         // STEP 7: 出荷予定のカレンダー入力

@@ -12,4 +12,10 @@ class ProjectShipment extends Model
     {
         return $this->belongsTo(Project::class);
     }
+
+    // この出荷予定に紐づく出荷実績（STEP 8）
+    public function deliveries()
+    {
+        return $this->hasMany(ProjectDelivery::class, 'shipment_id');
+    }
 }

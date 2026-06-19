@@ -318,7 +318,15 @@ class ProjectController extends Controller
         }
 
         if ($request->expectsJson()) {
-            return response()->json(['ok' => true, 'message' => '保存しました。']);
+            // STEP 4（最終見積）は全社回答済みで表示される。表示が新たに必要になったら画面側で再描画する
+            $allAnswered = $project->estimates()->count() > 0
+                && $project->estimates()->get()->every(fn ($e) => !empty($e->cost_price) || !empty($e->partner_completion_date) || !empty($e->partner_message));
+
+            return response()->json([
+                'ok'           => true,
+                'message'      => '保存しました。',
+                'all_answered' => $allAnswered,
+            ]);
         }
 
         return back()->with('success', '情報を更新しました。');
@@ -554,6 +562,29 @@ class ProjectController extends Controller
     }
 
     /**
+     * 生成したPDFを案件の添付ファイルとして自動保存する
+     */
+    private function storeGeneratedPdf(Project $project, string $content, string $fileName, string $category, bool $replace = false): void
+    {
+        // 同区分の既存ファイルを置き換える場合は古いものを削除（見積書など最新だけ残したいケース）
+        if ($replace) {
+            foreach ($project->files()->where('category', $category)->get() as $old) {
+                Storage::disk('public')->delete($old->file_path);
+                $old->delete();
+            }
+        }
+
+        $path = 'project_files/' . \Illuminate\Support\Str::uuid() . '.pdf';
+        Storage::disk('public')->put($path, $content);
+
+        $project->files()->create([
+            'file_path' => $path,
+            'file_name' => $fileName,
+            'category'  => $category,
+        ]);
+    }
+
+    /**
      * STEP 4: 見積書PDFの生成
      */
     public function generateQuotationPdf(Project $project)
@@ -571,11 +602,20 @@ class ProjectController extends Controller
 
         $fileName = '見積書_' . $project->documentNumber('M') . '_' . $project->name . '.pdf';
 
+        // 1回だけレンダリングし、同じ内容を保存＆ダウンロードに使う（二重レンダリング防止）
+        $content = $pdf->output();
+        $this->storeGeneratedPdf($project, $content, $fileName, 'quotation', true);
+
         activity()
             ->causedBy(auth()->user())
             ->log('案件「' . $project->name . '」の見積書PDFを生成しました');
 
-        return $pdf->download($fileName);
+        return response($content, 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => \Symfony\Component\HttpFoundation\HeaderUtils::makeDisposition(
+                \Symfony\Component\HttpFoundation\HeaderUtils::DISPOSITION_ATTACHMENT, $fileName, 'quotation.pdf'
+            ),
+        ]);
     }
 
     /**
@@ -881,11 +921,13 @@ class ProjectController extends Controller
         Gate::authorize('admin');
 
         $validated = $request->validate([
+            'shipment_id'   => ['nullable', \Illuminate\Validation\Rule::exists('project_shipments', 'id')->where('project_id', $project->id)],
             'shipped_date'  => 'required|date',
             'shipped_count' => 'nullable|integer|min:1',
             'shipping_cost' => 'nullable|numeric|min:0',
         ], [
-            'shipped_date.required' => '出荷日を入力してください。',
+            'shipped_date.required'  => '出荷日を入力してください。',
+            'shipment_id.exists'     => '対応する出荷予定の選択が正しくありません。',
         ]);
 
         $project->deliveries()->create($validated);
@@ -938,11 +980,17 @@ class ProjectController extends Controller
             'billing_date.required'     => '請求日を選択してください。',
         ]);
 
+        // AJAX（画面遷移なし）のときはエラーを JSON で返す
+        $wantsJson = $request->expectsJson();
+        $fail = fn (string $msg) => $wantsJson
+            ? response()->json(['ok' => false, 'message' => $msg], 422)
+            : back()->with('error', $msg);
+
         $billingMonth = $validated['billing_month'];
 
         // 同じ月を二重に請求しない
         if ($project->invoices()->where('billing_month', $billingMonth)->exists()) {
-            return back()->with('error', $billingMonth . ' は既に請求済みです。');
+            return $fail($billingMonth . ' は既に請求済みです。');
         }
 
         // 請求対象月に出荷（STEP 8 納期情報）した分を集計し、今回の請求台数とする
@@ -950,21 +998,21 @@ class ProjectController extends Controller
             ->filter(fn ($d) => \Carbon\Carbon::parse($d->shipped_date)->format('Y-m') === $billingMonth);
 
         if ($monthDeliveries->isEmpty()) {
-            return back()->with('error', $billingMonth . ' の出荷（STEP 8 納期情報）が登録されていません。出荷を登録してから請求してください。');
+            return $fail($billingMonth . ' の出荷（STEP 8 納期情報）が登録されていません。出荷を登録してから請求してください。');
         }
 
         $billingCount        = (int) $monthDeliveries->sum('shipped_count');
         $billingShippingCost = (float) $monthDeliveries->sum('shipping_cost');
 
         if ($billingCount < 1) {
-            return back()->with('error', $billingMonth . ' の出荷台数が0台のため請求できません。STEP 8 の出荷台数をご確認ください。');
+            return $fail($billingMonth . ' の出荷台数が0台のため請求できません。STEP 8 の出荷台数をご確認ください。');
         }
 
         // 累計請求台数が受注台数を超えないかチェック
         $alreadyBilled = (int) $project->invoices()->sum('billing_count');
         $orderedCount  = (int) $project->device_count;
         if ($orderedCount > 0 && $alreadyBilled + $billingCount > $orderedCount) {
-            return back()->with('error', '請求台数の合計が受注台数（' . number_format($orderedCount) . '台）を超えます。出荷台数をご確認ください。');
+            return $fail('請求台数の合計が受注台数（' . number_format($orderedCount) . '台）を超えます。出荷台数をご確認ください。');
         }
 
         // 金額計算（税込）：作業費（単価×今回台数）＋ 出荷費用 ＋ 消費税10%
@@ -1035,7 +1083,18 @@ class ProjectController extends Controller
             session()->flash('error', $completionNote);
         }
 
-        return $pdf->download($fileName);
+        // 1回だけレンダリングし、同じ内容を保存＆ダウンロードに使う（二重レンダリング防止）
+        $content = $pdf->output();
+        // 生成したPDFを添付ファイルとして自動保存（請求書は月ごとに1件ずつ残す）
+        $this->storeGeneratedPdf($project, $content, $fileName, 'invoice', false);
+
+        return response($content, 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => \Symfony\Component\HttpFoundation\HeaderUtils::makeDisposition(
+                \Symfony\Component\HttpFoundation\HeaderUtils::DISPOSITION_ATTACHMENT, $fileName, 'invoice.pdf'
+            ),
+            'X-Invoice-No'        => $invoiceNo, // AJAX 用：ダウンロードファイル名に使う
+        ]);
     }
 
     public function generateFinalEmail(Request $request, Project $project)
