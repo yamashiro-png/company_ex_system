@@ -105,6 +105,7 @@ class ProjectController extends Controller
             'estimates.editRequests',
             'estimates.priceHistories.changedBy',
             'estimates.priceHistories.approvedBy',
+            'step5EditRequests',
         ]);
         $partners = UnderCompany::orderBy('name', 'asc')->pluck('name');
         $accessoryMaster = \App\Models\Accessory::orderBy('name')->get();
@@ -461,6 +462,51 @@ class ProjectController extends Controller
     }
 
     /**
+     * STEP 5: 受注情報の編集申請（上長への承認依頼）
+     */
+    public function storeStep5EditRequest(Request $request, Project $project)
+    {
+        Gate::authorize('admin');
+        $user = $request->user();
+
+        if (!$user->supervisor_id) {
+            return back()->with('error', '上長が登録されていないため申請できません。');
+        }
+
+        // 重複申請チェック
+        if ($project->step5EditRequests()->where('status', 'pending')->exists()) {
+            return back()->with('error', 'この案件の受注情報には、既に承認待ちの申請があります。');
+        }
+
+        $validated = $request->validate([
+            'reason'                    => 'required|string|max:2000',
+            'requested_device_model'    => 'required|string|max:255',
+            'requested_device_count'    => 'required|integer|min:1',
+            'requested_contract_date'   => 'required|date',
+            'requested_completion_date' => 'required|date',
+            'requested_delivery_method' => 'required|in:' . implode(',', Project::METHOD_OPTIONS),
+        ]);
+
+        $project->step5EditRequests()->create([
+            'requester_id'              => $user->id,
+            'supervisor_id'             => $user->supervisor_id,
+            'reason'                    => $validated['reason'],
+            'requested_device_model'    => $validated['requested_device_model'],
+            'requested_device_count'    => $validated['requested_device_count'],
+            'requested_contract_date'   => $validated['requested_contract_date'],
+            'requested_completion_date' => $validated['requested_completion_date'],
+            'requested_delivery_method' => $validated['requested_delivery_method'],
+            'status'                    => 'pending',
+        ]);
+
+        activity()
+            ->causedBy($user)
+            ->log('案件「' . $project->name . '」の受注情報の編集を ' . $user->supervisor->name . ' に申請しました');
+
+        return back()->with('success', $user->supervisor->name . ' に編集申請を送信しました。承認をお待ちください。');
+    }
+
+    /**
      * STEP 5・6: 区分付きファイルのアップロード（受注書・手順書・入荷パラメータ）
      */
     public function uploadOrderFiles(Request $request, Project $project)
@@ -681,6 +727,14 @@ class ProjectController extends Controller
     {
         Gate::authorize('admin');
 
+        if (!$project->files()->where('category', 'manual')->exists()) {
+            return back()->with('error', '手順書ファイルがアップロードされていません。先にファイルをアップロードしてください。');
+        }
+
+        if (!$project->files()->where('category', 'arrival_parameter')->exists()) {
+            return back()->with('error', 'パラメータファイルがアップロードされていません。先にファイルをアップロードしてください。');
+        }
+
         $validated = $request->validate([
             'arrival_date'  => 'required|date',
             'arrival_count' => 'required|integer|min:0',
@@ -688,6 +742,11 @@ class ProjectController extends Controller
             'arrival_date.required'  => '入荷日を入力してください。',
             'arrival_count.required' => '入荷台数を入力してください。',
         ]);
+
+        $orderedCount = (int) $project->device_count;
+        if ($orderedCount > 0 && $validated['arrival_count'] > $orderedCount) {
+            return back()->with('error', '入荷台数（' . number_format($validated['arrival_count']) . '台）が受注台数（' . number_format($orderedCount) . '台）を超えています。正しい台数を入力してください。');
+        }
 
         $validated['status'] = '出荷情報登録待ち';
         $project->update($validated);
@@ -705,6 +764,14 @@ class ProjectController extends Controller
     {
         Gate::authorize('admin');
 
+        if (!$project->files()->where('category', 'manual')->exists()) {
+            return back()->with('error', '手順書ファイルがアップロードされていません。先にファイルをアップロードしてください。');
+        }
+
+        if (!$project->files()->where('category', 'arrival_parameter')->exists()) {
+            return back()->with('error', 'パラメータファイルがアップロードされていません。先にファイルをアップロードしてください。');
+        }
+
         $validated = $request->validate([
             'arrived_date'  => 'required|date',
             'arrived_count' => 'required|integer|min:1',
@@ -712,6 +779,15 @@ class ProjectController extends Controller
             'arrived_date.required'  => '入荷日を入力してください。',
             'arrived_count.required' => '入荷台数を入力してください。',
         ]);
+
+        $addingCount  = (int) $validated['arrived_count'];
+        $currentTotal = (int) $project->arrivals()->sum('arrived_count');
+        $orderedCount = (int) $project->device_count;
+
+        if ($orderedCount > 0 && $currentTotal + $addingCount > $orderedCount) {
+            $remain = $orderedCount - $currentTotal;
+            return back()->with('error', '入荷台数の合計が受注台数（' . number_format($orderedCount) . '台）を超えています。今回追加できる残りは ' . number_format(max($remain, 0)) . ' 台です。');
+        }
 
         $project->arrivals()->create($validated);
         $this->syncArrivalSummary($project);

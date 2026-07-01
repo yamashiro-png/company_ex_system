@@ -10,14 +10,12 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
             <div class="flex">
-                <div class="shrink-0 flex items-center font-black text-xl tracking-tighter text-blue-400">
+                <a href="{{ route('dashboard') }}" title="ダッシュボードへ"
+                   class="brand-logo shrink-0 flex items-center uppercase text-base sm:text-lg hover:opacity-80 transition-opacity">
                     Nexus
-                </div>
+                </a>
 
                 <div class="hidden space-x-8 sm:-my-px sm:ml-10 sm:flex text-xs font-bold uppercase tracking-widest">
-                    <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" class="text-slate-300 hover:text-white transition-colors">
-                        {{ __('Dashboard') }}
-                    </x-nav-link>
                     <x-nav-link :href="route('projects.index')" :active="request()->routeIs('projects.*')" class="text-slate-300 hover:text-white transition-colors">
                         案件一覧
                     </x-nav-link>
@@ -62,9 +60,6 @@
 
     <div :class="{'block': open, 'hidden': ! open}" class="hidden sm:hidden bg-slate-900/95 backdrop-blur-2xl border-b border-white/10 absolute w-full">
         <div class="pt-2 pb-3 space-y-1">
-            <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" class="text-slate-300">
-                ダッシュボード
-            </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('projects.index')" :active="request()->routeIs('projects.*')" class="text-slate-300">
                 案件一覧
             </x-responsive-nav-link>

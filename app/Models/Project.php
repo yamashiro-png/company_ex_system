@@ -130,4 +130,8 @@ class Project extends Model
     {
         return $this->hasMany(ProjectAccessory::class)->with('accessory')->orderBy('id');
     }
+    public function step5EditRequests()
+    {
+        return $this->hasMany(ProjectStep5EditRequest::class)->latest();
+    }
 }

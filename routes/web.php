@@ -145,6 +145,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects/estimates/{estimate}/edit-requests', [App\Http\Controllers\ProjectController::class, 'storeEditRequest'])->name('projects.estimates.edit_requests.store');
     // 最終見積の編集申請（STEP 4）
     Route::post('/projects/{project}/edit-requests', [App\Http\Controllers\ProjectController::class, 'storeProjectEditRequest'])->name('projects.edit_requests.store');
+    Route::post('/projects/{project}/step5-edit-requests', [App\Http\Controllers\ProjectController::class, 'storeStep5EditRequest'])->name('projects.step5_request.store');
     // 上長の承認・却下
     Route::get('/approvals', [App\Http\Controllers\ApprovalController::class, 'index'])->name('approvals.index');
     Route::post('/approvals/{editRequest}/approve', [App\Http\Controllers\ApprovalController::class, 'approve'])->name('approvals.approve');

@@ -7,6 +7,7 @@
     
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,900&display=swap" rel="stylesheet" />
+    @include('partials.brand-font')
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="bg-[#0f172a] text-white font-sans antialiased min-h-screen flex flex-col items-center justify-center px-4 relative overflow-hidden">
@@ -14,10 +15,13 @@
     <div class="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-600/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
     <div class="absolute bottom-[-10%] right-[-20%] w-[60%] h-[60%] bg-sky-600/5 rounded-full blur-[100px] -z-10 pointer-events-none"></div>
 
-    <div class="mb-10 transition-all duration-1000 transform hover:scale-105 z-10">
-        <h1 class="text-4xl md:text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400 drop-shadow-lg">
+    <div class="mb-10 text-center transition-all duration-1000 transform hover:scale-105 z-10">
+        <h1 class="brand-logo uppercase text-4xl md:text-5xl">
             Nexus
         </h1>
+        <p class="mt-4 font-mono text-[10px] sm:text-[11px] tracking-[0.28em] uppercase text-slate-500 whitespace-nowrap">
+            <span class="brand-accent">N</span>etworked<span class="text-slate-600 mx-2">·</span><span class="brand-accent">EX</span>ternal<span class="text-slate-600 mx-2">·</span><span class="brand-accent">U</span>keoi<span class="text-slate-600 mx-2">·</span><span class="brand-accent">S</span>ystem
+        </p>
     </div>
 
     <div class="w-full max-w-md px-8 py-10 bg-white/5 backdrop-blur-2xl border border-blue-500/20 rounded-[2.5rem] shadow-2xl z-10">

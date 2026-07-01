@@ -163,10 +163,10 @@
 
                     {{-- ============ 受注後フロー（STEP 5〜9） ============ --}}
 
-                    {{-- ▼ STEP 9: 請求 ▼ --}}
+                    {{-- ▼ STEP 8: 請求 ▼ --}}
                     @if($orderRank >= 5)
                     <div class="relative mb-12" x-data="{ open: true }">
-                        <div class="absolute -left-4 -top-4 bg-rose-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-rose-400/50">STEP 9</div>
+                        <div class="absolute -left-4 -top-4 bg-rose-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-rose-400/50">STEP 8</div>
                         <div class="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-8 shadow-2xl">
                             <h3 class="text-xl font-bold text-white flex items-center gap-3" :class="open ? 'mb-6' : ''">
                                 <span class="w-2 h-8 bg-rose-500 rounded-full"></span>請求
@@ -303,143 +303,26 @@
                     @endif
 
 
-                    {{-- ▼ STEP 8: 納期情報 ▼ --}}
-                    @if($orderRank >= 4)
-                    <div class="relative mb-12" x-data="{ open: true }">
-                        <div class="absolute -left-4 -top-4 bg-teal-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-teal-400/50">STEP 8</div>
-                        <div class="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-8 shadow-2xl">
-                            <h3 class="text-xl font-bold text-white flex items-center gap-3" :class="open ? 'mb-6' : ''">
-                                <span class="w-2 h-8 bg-teal-500 rounded-full"></span>納期情報
-                                @if($orderRank > 4)<span class="text-xs bg-green-500/20 text-green-300 border border-green-500/40 px-2.5 py-0.5 rounded-full">登録済み</span>@endif
-                                <button type="button" @click="open = !open" class="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition-all">
-                                    <svg class="w-5 h-5 transition-transform duration-300" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
-                                </button>
-                            </h3>
-                            <div x-show="open" class="space-y-6">
-                                {{-- 出荷データのアップロード --}}
-                                <div>
-                                    <h4 class="text-sm font-bold text-teal-300 mb-3">出荷データのアップロード</h4>
-                                    <form action="{{ route('projects.order_files.store', $project) }}" method="POST" enctype="multipart/form-data" class="flex flex-col md:flex-row items-stretch md:items-center gap-3 mb-3">
-                                        @csrf
-                                        <input type="hidden" name="category" value="shipping_data">
-                                        <input type="file" name="order_files[]" multiple required class="flex-grow block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-5 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-teal-600 file:text-white hover:file:bg-teal-500 cursor-pointer bg-black/40 rounded-xl border border-white/30">
-                                        <button type="submit" class="bg-teal-600 hover:bg-teal-500 text-white font-bold py-2.5 px-6 rounded-xl transition-all text-sm whitespace-nowrap">アップロード</button>
-                                    </form>
-                                    @if($shippingFiles->count() > 0)
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                            @foreach($shippingFiles as $file)
-                                                <div class="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/10">
-                                                    <span class="text-xs text-slate-300 truncate mr-2">{{ $file->file_name }}</span>
-                                                    <div class="flex gap-3 shrink-0">
-                                                        <a href="{{ route('projects.files.download', $file) }}" class="text-teal-400 text-xs hover:underline bg-teal-500/10 px-3 py-1 rounded">DL</a>
-                                                        <button type="button" onclick="if(confirm('このファイルを削除しますか？')) document.getElementById('delete-file-form-{{ $file->id }}').submit();" class="text-red-400 text-xs hover:underline cursor-pointer">削除</button>
-                                                    </div>
-                                                </div>
-                                            @endforeach
-                                        </div>
-                                    @else
-                                        <p class="text-xs text-slate-500 italic">出荷データはまだアップロードされていません。</p>
-                                    @endif
-                                </div>
-                                {{-- 出荷日・出荷台数・出荷費用（出荷便ごとに複数登録） --}}
-                                <div class="pt-6 border-t border-white/10">
-                                    <h4 class="text-sm font-bold text-teal-300 mb-3">出荷実績（出荷便ごとに登録）</h4>
-                                    <div class="bg-black/20 border border-white/10 rounded-2xl p-5">
-                                        @php $deliveredTotal = (int) $project->deliveries->sum('shipped_count'); @endphp
-                                        <div class="flex items-center justify-between mb-3">
-                                            <span class="text-sm font-bold text-slate-300">出荷記録</span>
-                                            <span class="text-xs font-mono text-slate-400">出荷済 {{ number_format($deliveredTotal) }} / {{ number_format($project->device_count) }} 台</span>
-                                        </div>
-                                        @if($project->deliveries->count() > 0)
-                                            <div class="space-y-2 mb-3">
-                                                @foreach($project->deliveries as $dv)
-                                                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 bg-white/5 rounded-xl px-4 py-2.5 border border-white/10 text-sm">
-                                                        <span class="text-slate-200">{{ \Carbon\Carbon::parse($dv->shipped_date)->format('Y/m/d') }}</span>
-                                                        <span class="font-mono text-white">{{ $dv->shipped_count !== null ? number_format($dv->shipped_count) . ' 台' : '-' }}</span>
-                                                        <span class="font-mono text-slate-400">出荷費用 ¥{{ number_format($dv->shipping_cost ?? 0) }}</span>
-                                                        @if($dv->shipment)
-                                                            <span class="text-[11px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 px-2 py-0.5 rounded-full">
-                                                                予定 {{ \Carbon\Carbon::parse($dv->shipment->planned_date)->format('Y/m/d') }}（{{ number_format($dv->shipment->planned_count) }}台）
-                                                            </span>
-                                                        @endif
-                                                        <form action="{{ route('projects.deliveries.delete', [$project, $dv]) }}" method="POST" onsubmit="return confirm('この納期情報を削除しますか？');" class="ml-auto">
-                                                            @csrf @method('DELETE')
-                                                            <button type="submit" class="text-red-400 text-xs hover:underline">削除</button>
-                                                        </form>
-                                                    </div>
-                                                @endforeach
-                                            </div>
-                                        @else
-                                            <p class="text-xs text-slate-500 italic mb-3">出荷記録がまだありません。</p>
-                                        @endif
-                                        <form action="{{ route('projects.deliveries.add', $project) }}" method="POST" class="pt-3 border-t border-white/10"
-                                              x-data="{
-                                                  plans: {{ \Illuminate\Support\Js::from($project->shipments->mapWithKeys(fn($s) => [$s->id => ['date' => \Carbon\Carbon::parse($s->planned_date)->format('Y-m-d'), 'count' => (int) $s->planned_count]])) }},
-                                                  sel: '',
-                                                  shippedDate: '{{ now()->format('Y-m-d') }}',
-                                                  shippedCount: ''
-                                              }">
-                                            @csrf
-                                            @if($project->shipments->count() > 0)
-                                                <div class="mb-3">
-                                                    <label class="block text-[11px] font-bold text-slate-400 mb-1">対応する出荷予定（選ぶと日付・台数を自動入力）</label>
-                                                    <select name="shipment_id" x-model="sel"
-                                                            @change="if (plans[sel]) { shippedDate = plans[sel].date; shippedCount = plans[sel].count; }"
-                                                            class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm focus:ring-teal-500 cursor-pointer">
-                                                        <option value="">（紐づけない）</option>
-                                                        @foreach($project->shipments as $sh)
-                                                            @php $rec = $project->deliveries->firstWhere('shipment_id', $sh->id); @endphp
-                                                            <option value="{{ $sh->id }}">
-                                                                {{ \Carbon\Carbon::parse($sh->planned_date)->format('Y/m/d') }} 予定 {{ number_format($sh->planned_count) }}台{{ $rec ? '（記録済み）' : '' }}
-                                                            </option>
-                                                        @endforeach
-                                                    </select>
-                                                </div>
-                                            @endif
-                                            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                                                <div>
-                                                    <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷日 <span class="text-red-400">*</span></label>
-                                                    <input type="date" name="shipped_date" x-model="shippedDate" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]">
-                                                </div>
-                                                <div>
-                                                    <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷台数</label>
-                                                    <input type="number" name="shipped_count" x-model="shippedCount" min="1" class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm font-mono">
-                                                </div>
-                                                <div>
-                                                    <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷費用（円）</label>
-                                                    <input type="number" name="shipping_cost" min="0" class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm font-mono">
-                                                </div>
-                                                <button type="submit" class="bg-teal-600 hover:bg-teal-500 text-white font-bold py-2.5 px-5 rounded-xl transition-all text-sm whitespace-nowrap">納期情報を追加</button>
-                                            </div>
-                                        </form>
-                                        <p class="text-[11px] text-slate-500 mt-2">1件目を登録するとステータスが「納品済み」に進みます。月ごとの出荷便を分けて登録できます。</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    @endif
-
-
-                    {{-- ▼ STEP 7: 出荷情報（分納対応） ▼ --}}
+                    {{-- ▼ 【新】STEP 7: 出荷情報・実績管理（分納対応） ▼ --}}
                     @if($orderRank >= 3)
                     <div class="relative mb-12" x-data="{ open: true }">
                         <div class="absolute -left-4 -top-4 bg-indigo-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-indigo-400/50">STEP 7</div>
                         <div class="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-8 shadow-2xl">
                             <h3 @click="open = !open" class="text-xl font-bold text-white flex items-center gap-3 cursor-pointer select-none" :class="open ? 'mb-6' : ''">
-                                <span class="w-2 h-8 bg-indigo-500 rounded-full"></span>出荷情報
+                                <span class="w-2 h-8 bg-indigo-500 rounded-full"></span>出荷情報・実績管理
                                 <span class="text-xs bg-white/10 text-slate-300 border border-white/20 px-2.5 py-0.5 rounded-full">{{ $isSplitDelivery ? '分納' : '一括納品' }}</span>
-                                @if($orderRank > 3)<span class="text-xs bg-green-500/20 text-green-300 border border-green-500/40 px-2.5 py-0.5 rounded-full">確定済み</span>@endif
+                                @if($orderRank > 3)<span class="text-xs bg-green-500/20 text-green-300 border border-green-500/40 px-2.5 py-0.5 rounded-full">予定確定済み</span>@endif
                                 <span class="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition-all">
                                     <svg class="w-5 h-5 transition-transform duration-300" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
                                 </span>
                             </h3>
-                            <div x-show="open" class="space-y-5">
+                            <div x-show="open" class="space-y-6">
                                 @php
                                     $remaining = (int) $project->device_count - (int) $shipmentTotal;
-                                    // 出荷予定の編集（追加・削除）は、確定後でも出荷が全て終わるまで（納品済み前）可能
                                     $canEditShipments = $orderRank >= 3 && $orderRank < 5;
                                 @endphp
+                                
+                                {{-- 出荷予定エリア --}}
                                 <div class="bg-black/20 border border-white/10 rounded-2xl p-5">
                                     <div class="flex items-center justify-between mb-3">
                                         <span class="text-sm font-bold text-slate-300">出荷予定{{ $isSplitDelivery ? '（分割して登録）' : '' }}</span>
@@ -474,7 +357,6 @@
                                             @csrf
                                             <p class="text-[11px] font-bold text-slate-400 mb-3">カレンダーの日付をクリックすると、出荷予定の入力欄が追加されます（残 {{ number_format($remaining) }} 台）</p>
                                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                                                {{-- カレンダー --}}
                                                 <div class="bg-black/30 border border-white/10 rounded-2xl p-4 select-none">
                                                     <div class="flex items-center justify-between mb-3">
                                                         <button type="button" @click="prevMonth()" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 text-lg">‹</button>
@@ -496,7 +378,6 @@
                                                         </template>
                                                     </div>
                                                 </div>
-                                                {{-- 選択した日付の入力欄 --}}
                                                 <div class="flex flex-col">
                                                     <template x-if="selectedDates.length === 0">
                                                         <p class="text-xs text-slate-500 italic py-4">日付を選択すると、ここに台数の入力欄が表示されます。</p>
@@ -518,7 +399,7 @@
                                                             合計 <span x-text="total"></span> / 残 {{ number_format($remaining) }} 台
                                                         </span>
                                                         <button type="submit" :disabled="!valid"
-                                                                class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-8 rounded-xl transition-all text-sm">保存</button>
+                                                                class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-8 rounded-xl transition-all text-sm">予定を保存</button>
                                                     </div>
                                                     <p class="text-[11px] text-red-400 mt-2" x-show="total > remaining" x-cloak>残り台数（{{ number_format($remaining) }}台）を超えています。</p>
                                                 </div>
@@ -544,6 +425,152 @@
                                         <p class="text-[11px] text-amber-400 mt-3">確定済みですが、分納の残り {{ number_format($remaining) }} 台を上のフォームから追加できます。</p>
                                     @endif
                                 </div>
+
+                                {{-- 予定確定後（$orderRank >= 4）に連動して出現する実績・データ管理エリア --}}
+                                @if($orderRank >= 4)
+                                    {{-- 出荷データのアップロード --}}
+                                    <div class="pt-6 border-t border-white/10">
+                                        <h4 class="text-sm font-bold text-indigo-300 mb-3">出荷データのアップロード</h4>
+                                        <form action="{{ route('projects.order_files.store', $project) }}" method="POST" enctype="multipart/form-data" class="flex flex-col md:flex-row items-stretch md:items-center gap-3 mb-3">
+                                            @csrf
+                                            <input type="hidden" name="category" value="shipping_data">
+                                            <input type="file" name="order_files[]" multiple required class="flex-grow block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-5 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer bg-black/40 rounded-xl border border-white/30">
+                                            <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-6 rounded-xl transition-all text-sm whitespace-nowrap">アップロード</button>
+                                        </form>
+                                        @if($shippingFiles->count() > 0)
+                                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                @foreach($shippingFiles as $file)
+                                                    <div class="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/10">
+                                                        <span class="text-xs text-slate-300 truncate mr-2">{{ $file->file_name }}</span>
+                                                        <div class="flex gap-3 shrink-0">
+                                                            <a href="{{ route('projects.files.download', $file) }}" class="text-indigo-400 text-xs hover:underline bg-indigo-500/10 px-3 py-1 rounded">DL</a>
+                                                            <button type="button" onclick="if(confirm('このファイルを削除しますか？')) document.getElementById('delete-file-form-{{ $file->id }}').submit();" class="text-red-400 text-xs hover:underline cursor-pointer">削除</button>
+                                                        </div>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        @else
+                                            <p class="text-xs text-slate-500 italic">出荷データはまだアップロードされていません。</p>
+                                        @endif
+                                    </div>
+
+                                    {{-- 出荷実績（予定ごとの記録） --}}
+                                    <div class="pt-6 border-t border-white/10">
+                                        <h4 class="text-sm font-bold text-indigo-300 mb-3">出荷実績（予定ごとの記録）</h4>
+                                        <div class="bg-black/20 border border-white/10 rounded-2xl p-5">
+                                            @php $deliveredTotal = (int) $project->deliveries->sum('shipped_count'); @endphp
+                                            <div class="flex items-center justify-between mb-4">
+                                                <span class="text-sm font-bold text-slate-300">総出荷記録</span>
+                                                <span class="text-xs font-mono text-slate-400">全体出荷済 {{ number_format($deliveredTotal) }} / {{ number_format($project->device_count) }} 台</span>
+                                            </div>
+
+                                            @if($project->shipments->count() > 0 || $project->deliveries->count() > 0)
+                                                <div class="space-y-4 mb-6">
+                                                    {{-- 予定ごとのグループ --}}
+                                                    @foreach($project->shipments as $sh)
+                                                        @php
+                                                            $linkedDeliveries = $project->deliveries->where('shipment_id', $sh->id);
+                                                            $linkedTotal = $linkedDeliveries->sum('shipped_count');
+                                                            $isComplete = $linkedTotal >= $sh->planned_count;
+                                                        @endphp
+                                                        <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+                                                            <div class="flex items-center justify-between mb-3 pb-2 border-b border-white/10">
+                                                                <div class="flex items-center gap-3">
+                                                                    <span class="text-sm font-bold text-sky-300">予定：{{ \Carbon\Carbon::parse($sh->planned_date)->format('Y/m/d') }}</span>
+                                                                    <span class="text-sm font-mono text-white">{{ number_format($sh->planned_count) }} 台</span>
+                                                                </div>
+                                                                <span class="text-xs font-mono {{ $isComplete ? 'text-green-400' : 'text-amber-400' }}">
+                                                                    実績合計 {{ number_format($linkedTotal) }} / {{ number_format($sh->planned_count) }} 台
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            @if($linkedDeliveries->count() > 0)
+                                                                <div class="space-y-2">
+                                                                    @foreach($linkedDeliveries as $dv)
+                                                                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 bg-black/40 rounded-lg px-4 py-2.5 border border-white/5 text-sm">
+                                                                            <span class="text-slate-200">出荷日：{{ \Carbon\Carbon::parse($dv->shipped_date)->format('Y/m/d') }}</span>
+                                                                            <span class="font-mono text-white">{{ $dv->shipped_count !== null ? number_format($dv->shipped_count) . ' 台' : '-' }}</span>
+                                                                            <form action="{{ route('projects.deliveries.delete', [$project, $dv]) }}" method="POST" onsubmit="return confirm('この納期情報を削除しますか？');" class="ml-auto">
+                                                                                @csrf @method('DELETE')
+                                                                                <button type="submit" class="text-red-400 text-xs hover:underline">削除</button>
+                                                                            </form>
+                                                                        </div>
+                                                                    @endforeach
+                                                                </div>
+                                                            @else
+                                                                <p class="text-[11px] text-slate-500 italic px-2">この予定に対する実績はまだ登録されていません。</p>
+                                                            @endif
+                                                        </div>
+                                                    @endforeach
+
+                                                    {{-- 予定に紐づかない実績（過去データや紐づけ忘れ用） --}}
+                                                    @php $unlinkedDeliveries = $project->deliveries->whereNull('shipment_id'); @endphp
+                                                    @if($unlinkedDeliveries->count() > 0)
+                                                        <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+                                                            <div class="mb-3 pb-2 border-b border-white/10">
+                                                                <span class="text-sm font-bold text-slate-400">予定に紐づかない実績</span>
+                                                            </div>
+                                                            <div class="space-y-2">
+                                                                @foreach($unlinkedDeliveries as $dv)
+                                                                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 bg-black/40 rounded-lg px-4 py-2.5 border border-white/5 text-sm">
+                                                                        <span class="text-slate-200">出荷日：{{ \Carbon\Carbon::parse($dv->shipped_date)->format('Y/m/d') }}</span>
+                                                                        <span class="font-mono text-white">{{ $dv->shipped_count !== null ? number_format($dv->shipped_count) . ' 台' : '-' }}</span>
+                                                                        <form action="{{ route('projects.deliveries.delete', [$project, $dv]) }}" method="POST" onsubmit="return confirm('この納期情報を削除しますか？');" class="ml-auto">
+                                                                            @csrf @method('DELETE')
+                                                                            <button type="submit" class="text-red-400 text-xs hover:underline">削除</button>
+                                                                        </form>
+                                                                    </div>
+                                                                @endforeach
+                                                            </div>
+                                                        </div>
+                                                    @endif
+                                                </div>
+                                            @else
+                                                <p class="text-xs text-slate-500 italic mb-5">出荷実績がまだありません。</p>
+                                            @endif
+                                            
+                                            <form action="{{ route('projects.deliveries.add', $project) }}" method="POST" class="pt-3 border-t border-white/10"
+                                                  x-data="{
+                                                      plans: {{ \Illuminate\Support\Js::from($project->shipments->mapWithKeys(fn($s) => [$s->id => ['date' => \Carbon\Carbon::parse($s->planned_date)->format('Y/m/d'), 'count' => (int) $s->planned_count]])) }},
+                                                      sel: ''
+                                                  }">
+                                                @csrf
+                                                @if($project->shipments->count() > 0)
+                                                    <div class="mb-3">
+                                                        <label class="block text-[11px] font-bold text-slate-400 mb-1">対応する出荷予定（照合用・任意）</label>
+                                                        <select name="shipment_id" x-model="sel"
+                                                                class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm focus:ring-indigo-500 cursor-pointer">
+                                                            <option value="">（紐づけない）</option>
+                                                            @foreach($project->shipments as $sh)
+                                                                @php $rec = $project->deliveries->firstWhere('shipment_id', $sh->id); @endphp
+                                                                <option value="{{ $sh->id }}">
+                                                                    {{ \Carbon\Carbon::parse($sh->planned_date)->format('Y/m/d') }} 予定 {{ number_format($sh->planned_count) }}台{{ $rec ? '（記録済み）' : '' }}
+                                                                </option>
+                                                            @endforeach
+                                                        </select>
+                                                        <p class="text-[11px] text-slate-500 mt-1" x-show="plans[sel]" x-cloak>
+                                                            予定：<span class="text-sky-300" x-text="plans[sel] ? plans[sel].date : ''"></span> ／ <span class="text-sky-300" x-text="plans[sel] ? plans[sel].count : ''"></span>台（実績は下に入力。予定と異なってもOK）
+                                                        </p>
+                                                    </div>
+                                                @endif
+                                                {{-- ▼ グリッドを4等分(md:grid-cols-4)から3等分(md:grid-cols-3)に変更 ▼ --}}
+                                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                                                    <div>
+                                                        <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷日 <span class="text-red-400">*</span></label>
+                                                        <input type="date" name="shipped_date" value="{{ now()->format('Y-m-d') }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]">
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-[11px] font-bold text-slate-400 mb-1">出荷台数 <span class="text-red-400">*</span></label>
+                                                        <input type="number" name="shipped_count" min="1" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm font-mono">
+                                                    </div>
+                                                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-5 rounded-xl transition-all text-sm whitespace-nowrap">納期情報を追加</button>
+                                                </div>
+                                            </form>
+                                            <p class="text-[11px] text-slate-500 mt-2">1件目を登録するとステータスが「納品済み」に進みます。月ごとの出荷便を分けて登録できます。</p>
+                                        </div>
+                                    </div>
+                                @endif
+                                
                             </div>
                         </div>
                     </div>
@@ -565,7 +592,7 @@
                             <div x-show="open" class="space-y-6">
                                 {{-- 手順書のアップロード --}}
                                 <div>
-                                    <h4 class="text-sm font-bold text-pink-300 mb-3">手順書のアップロード</h4>
+                                    <h4 class="text-sm font-bold text-pink-300 mb-3">手順書のアップロード <span class="text-red-400">*</span></h4>
                                     <form action="{{ route('projects.order_files.store', $project) }}" method="POST" enctype="multipart/form-data" class="flex flex-col md:flex-row items-stretch md:items-center gap-3 mb-3">
                                         @csrf
                                         <input type="hidden" name="category" value="manual">
@@ -590,7 +617,7 @@
                                 </div>
                                 {{-- パラメータのアップロード --}}
                                 <div class="pt-6 border-t border-white/10">
-                                    <h4 class="text-sm font-bold text-pink-300 mb-3">パラメータのアップロード</h4>
+                                    <h4 class="text-sm font-bold text-pink-300 mb-3">パラメータのアップロード <span class="text-red-400">*</span></h4>
                                     <form action="{{ route('projects.order_files.store', $project) }}" method="POST" enctype="multipart/form-data" class="flex flex-col md:flex-row items-stretch md:items-center gap-3 mb-3">
                                         @csrf
                                         <input type="hidden" name="category" value="arrival_parameter">
@@ -704,73 +731,93 @@
 
                     {{-- ▼ STEP 5: 受注情報 ▼ --}}
                     @if($orderRank >= 1)
-                    <div class="relative mb-12" x-data="{ open: true }">
+                    @php
+                        $hasPendingStep5Request = $project->step5EditRequests->where('status', 'pending')->isNotEmpty();
+                        $latestStep5Request = $project->step5EditRequests->first();
+                        $isStep5Locked = $orderRank > 1; // 確定済み（orderRankが2以上）ならロック
+                    @endphp
+                    <div class="relative mb-12" x-data="{ open: true, requestModal5: false }">
                         <div class="absolute -left-4 -top-4 bg-emerald-600 text-white font-black px-5 py-1.5 rounded-full text-sm shadow-lg z-10 border border-emerald-400/50">STEP 5</div>
                         <div class="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-8 shadow-2xl">
                             <h3 class="text-xl font-bold text-white flex items-center gap-3" :class="open ? 'mb-6' : ''">
                                 <span class="w-2 h-8 bg-emerald-500 rounded-full"></span>受注情報
-                                @if($orderRank > 1)<span class="text-xs bg-green-500/20 text-green-300 border border-green-500/40 px-2.5 py-0.5 rounded-full">確定済み</span>@endif
+                                @if($isStep5Locked)
+                                    <span class="text-xs bg-green-500/20 text-green-300 border border-green-500/40 px-2.5 py-0.5 rounded-full">確定済み</span>
+                                    @if($hasPendingStep5Request)
+                                        <span class="text-xs bg-amber-500/20 text-amber-300 font-bold px-2.5 py-0.5 rounded-full border border-amber-500/40">承認待ち</span>
+                                    @else
+                                        <button type="button" @click="requestModal5 = true"
+                                                class="text-xs bg-white/10 hover:bg-white/20 text-emerald-300 font-bold px-3 py-1 rounded-lg border border-white/20 transition-all">
+                                            編集申請
+                                        </button>
+                                    @endif
+                                @endif
                                 <button type="button" @click="open = !open" class="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition-all">
                                     <svg class="w-5 h-5 transition-transform duration-300" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
                                 </button>
                             </h3>
                             <div x-show="open" class="space-y-6">
-                                {{-- 請負先見積書（受注書）のアップロード --}}
+
+                                {{-- 受注情報の確定フォーム / ロック時は閲覧モード --}}
                                 <div>
-                                    <h4 class="text-sm font-bold text-emerald-300 mb-3">請負先見積書（受注書）のアップロード</h4>
-                                    <form action="{{ route('projects.order_files.store', $project) }}" method="POST" enctype="multipart/form-data" class="flex flex-col md:flex-row items-stretch md:items-center gap-3 mb-3">
-                                        @csrf
-                                        <input type="hidden" name="category" value="order_form">
-                                        <input type="file" name="order_files[]" multiple required class="flex-grow block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-5 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer bg-black/40 rounded-xl border border-white/30">
-                                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-6 rounded-xl transition-all text-sm whitespace-nowrap">アップロード</button>
-                                    </form>
-                                    @if($orderFiles->count() > 0)
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                            @foreach($orderFiles as $file)
-                                                <div class="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/10">
-                                                    <span class="text-xs text-slate-300 truncate mr-2">{{ $file->file_name }}</span>
-                                                    <div class="flex gap-3 shrink-0">
-                                                        <a href="{{ route('projects.files.download', $file) }}" class="text-emerald-400 text-xs hover:underline bg-emerald-500/10 px-3 py-1 rounded">DL</a>
-                                                        <button type="button" onclick="if(confirm('このファイルを削除しますか？')) document.getElementById('delete-file-form-{{ $file->id }}').submit();" class="text-red-400 text-xs hover:underline cursor-pointer">削除</button>
-                                                    </div>
+                                    @if($isStep5Locked)
+                                        {{-- 🔒 ロック時の表示モード --}}
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 bg-black/20 p-6 rounded-2xl border border-white/5">
+                                            <div>
+                                                <div class="text-xs font-bold text-slate-400 mb-1">機種名</div>
+                                                <div class="text-white text-lg font-bold">{{ $project->device_model }}</div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs font-bold text-slate-400 mb-1">台数</div>
+                                                <div class="text-white text-lg font-bold font-mono">{{ number_format($project->device_count) }} 台</div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs font-bold text-slate-400 mb-1">開始予定日</div>
+                                                <div class="text-white text-lg">{{ \Carbon\Carbon::parse($project->contract_date)->format('Y/m/d') }}</div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs font-bold text-slate-400 mb-1">納品予定日</div>
+                                                <div class="text-white text-lg">{{ \Carbon\Carbon::parse($project->completion_date)->format('Y/m/d') }}</div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs font-bold text-slate-400 mb-1">納品方法</div>
+                                                <div class="text-white text-lg">{{ $project->delivery_method }}</div>
+                                            </div>
+                                        </div>
+                                    @else
+                                        {{-- 🔓 未確定時の入力フォーム --}}
+                                        <form action="{{ route('projects.order_info.confirm', $project) }}" method="POST" class="space-y-4">
+                                            @csrf
+                                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label class="block text-xs font-bold text-slate-400 mb-1.5">機種名 <span class="text-red-400">*</span></label>
+                                                    <input type="text" name="device_model" value="{{ $project->device_model }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 focus:ring-emerald-500">
                                                 </div>
-                                            @endforeach
-                                        </div>
+                                                <div>
+                                                    <label class="block text-xs font-bold text-slate-400 mb-1.5">台数 <span class="text-red-400">*</span></label>
+                                                    <input type="number" name="device_count" value="{{ $project->device_count }}" min="1" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 focus:ring-emerald-500 font-mono">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-bold text-slate-400 mb-1.5">開始予定日 <span class="text-red-400">*</span></label>
+                                                    <input type="date" name="contract_date" value="{{ $project->contract_date }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 [color-scheme:dark]">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-bold text-slate-400 mb-1.5">納品予定日 <span class="text-red-400">*</span></label>
+                                                    <input type="date" name="completion_date" value="{{ $project->completion_date }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 [color-scheme:dark]">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-bold text-slate-400 mb-1.5">納品方法 <span class="text-red-400">*</span></label>
+                                                    <select name="delivery_method" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 focus:ring-emerald-500 cursor-pointer">
+                                                        <option value="">選択してください</option>
+                                                        @foreach(\App\Models\Project::METHOD_OPTIONS as $m)
+                                                            <option value="{{ $m }}" {{ $project->delivery_method === $m ? 'selected' : '' }}>{{ $m }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl shadow-lg transition-all">受注情報を確定</button>
+                                        </form>
                                     @endif
-                                </div>
-                                {{-- 受注情報の確定フォーム --}}
-                                <div class="pt-6 border-t border-white/10">
-                                    <form action="{{ route('projects.order_info.confirm', $project) }}" method="POST" class="space-y-4">
-                                        @csrf
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div>
-                                                <label class="block text-xs font-bold text-slate-400 mb-1.5">機種名 <span class="text-red-400">*</span></label>
-                                                <input type="text" name="device_model" value="{{ $project->device_model }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 focus:ring-emerald-500">
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs font-bold text-slate-400 mb-1.5">台数 <span class="text-red-400">*</span></label>
-                                                <input type="number" name="device_count" value="{{ $project->device_count }}" min="1" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 focus:ring-emerald-500 font-mono">
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs font-bold text-slate-400 mb-1.5">開始予定日 <span class="text-red-400">*</span></label>
-                                                <input type="date" name="contract_date" value="{{ $project->contract_date }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 [color-scheme:dark]">
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs font-bold text-slate-400 mb-1.5">納品予定日 <span class="text-red-400">*</span></label>
-                                                <input type="date" name="completion_date" value="{{ $project->completion_date }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 [color-scheme:dark]">
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs font-bold text-slate-400 mb-1.5">納品方法 <span class="text-red-400">*</span></label>
-                                                <select name="delivery_method" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 focus:ring-emerald-500 cursor-pointer">
-                                                    <option value="">選択してください</option>
-                                                    @foreach(\App\Models\Project::METHOD_OPTIONS as $m)
-                                                        <option value="{{ $m }}" {{ $project->delivery_method === $m ? 'selected' : '' }}>{{ $m }}</option>
-                                                    @endforeach
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl shadow-lg transition-all">受注書作成（受注情報を確定）</button>
-                                    </form>
                                 </div>
 
                                 {{-- 付属品（付属品有無＝有のとき） --}}
@@ -783,40 +830,98 @@
                                                 <div class="flex items-center justify-between bg-white/5 rounded-xl px-4 py-2.5 border border-white/10">
                                                     <span class="text-sm text-slate-200">{{ $pa->accessory->name ?? '（削除済み）' }}</span>
                                                     <span class="text-sm font-mono text-white">{{ number_format($pa->planned_count) }} 台</span>
-                                                    <form action="{{ route('projects.accessories.delete', [$project, $pa]) }}" method="POST" onsubmit="return confirm('この付属品を削除しますか？');">
-                                                        @csrf @method('DELETE')
-                                                        <button type="submit" class="text-red-400 text-xs hover:underline">削除</button>
-                                                    </form>
+                                                    @if(!$isStep5Locked)
+                                                        <form action="{{ route('projects.accessories.delete', [$project, $pa]) }}" method="POST" onsubmit="return confirm('この付属品を削除しますか？');">
+                                                            @csrf @method('DELETE')
+                                                            <button type="submit" class="text-red-400 text-xs hover:underline">削除</button>
+                                                        </form>
+                                                    @endif
                                                 </div>
                                             @endforeach
                                         </div>
                                     @else
                                         <p class="text-xs text-slate-500 italic mb-3">付属品がまだ登録されていません。</p>
                                     @endif
-                                    <form action="{{ route('projects.accessories.add', $project) }}" method="POST" class="flex flex-col md:flex-row items-stretch md:items-end gap-3">
-                                        @csrf
-                                        <div class="flex-1">
-                                            <label class="block text-[11px] font-bold text-slate-400 mb-1">商品名</label>
-                                            <select name="accessory_id" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm cursor-pointer">
-                                                <option value="">選択してください</option>
-                                                @foreach($accessoryMaster as $acc)
-                                                    <option value="{{ $acc->id }}">{{ $acc->name }}</option>
-                                                @endforeach
-                                            </select>
-                                        </div>
-                                        <div class="w-full md:w-40">
-                                            <label class="block text-[11px] font-bold text-slate-400 mb-1">台数</label>
-                                            <input type="number" name="planned_count" min="1" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm font-mono">
-                                        </div>
-                                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-5 rounded-xl transition-all text-sm whitespace-nowrap">付属品を追加</button>
-                                    </form>
-                                    @if($accessoryMaster->isEmpty())
-                                        <p class="text-[11px] text-amber-400 mt-2">付属品マスタが空です。マスター設定の「付属品マスタ」で登録してください。</p>
+                                    
+                                    @if(!$isStep5Locked)
+                                        <form action="{{ route('projects.accessories.add', $project) }}" method="POST" class="flex flex-col md:flex-row items-stretch md:items-end gap-3">
+                                            @csrf
+                                            <div class="flex-1">
+                                                <label class="block text-[11px] font-bold text-slate-400 mb-1">商品名</label>
+                                                <select name="accessory_id" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm cursor-pointer">
+                                                    <option value="">選択してください</option>
+                                                    @foreach($accessoryMaster as $acc)
+                                                        <option value="{{ $acc->id }}">{{ $acc->name }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div class="w-full md:w-40">
+                                                <label class="block text-[11px] font-bold text-slate-400 mb-1">台数</label>
+                                                <input type="number" name="planned_count" min="1" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm font-mono">
+                                            </div>
+                                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-5 rounded-xl transition-all text-sm whitespace-nowrap">付属品を追加</button>
+                                        </form>
                                     @endif
                                 </div>
                                 @endif
+
                             </div>
                         </div>
+
+                        {{-- ▼ STEP 5 編集申請モーダル ▼ --}}
+                        <div x-show="requestModal5" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+                            <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="requestModal5 = false"></div>
+                            <div class="relative w-full max-w-xl bg-slate-900 border border-white/15 rounded-3xl shadow-2xl overflow-hidden" @keydown.escape.window="requestModal5 = false">
+                                <div class="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-white/5">
+                                    <h4 class="font-bold text-white flex items-center gap-2">
+                                        <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5"></path></svg>
+                                        受注情報の編集申請
+                                    </h4>
+                                    <button type="button" @click="requestModal5 = false" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                    </button>
+                                </div>
+                                <div class="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                                    <form action="{{ route('projects.step5_request.store', $project) }}" method="POST" class="space-y-4">
+                                        @csrf
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-xs font-bold text-slate-400 mb-1">機種名</label>
+                                                <input type="text" name="requested_device_model" value="{{ $project->device_model }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-bold text-slate-400 mb-1">台数</label>
+                                                <input type="number" name="requested_device_count" value="{{ $project->device_count }}" min="1" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm font-mono">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-bold text-slate-400 mb-1">開始予定日</label>
+                                                <input type="date" name="requested_contract_date" value="{{ $project->contract_date }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-bold text-slate-400 mb-1">納品予定日</label>
+                                                <input type="date" name="requested_completion_date" value="{{ $project->completion_date }}" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]">
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="block text-xs font-bold text-slate-400 mb-1">納品方法</label>
+                                                <select name="requested_delivery_method" required class="w-full bg-black/40 border-white/30 rounded-xl text-white px-3 py-2 text-sm">
+                                                    @foreach(\App\Models\Project::METHOD_OPTIONS as $m)
+                                                        <option value="{{ $m }}" {{ $project->delivery_method === $m ? 'selected' : '' }}>{{ $m }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-bold text-slate-400 mb-1">編集理由 <span class="text-red-400">*</span></label>
+                                            <textarea name="reason" rows="3" required placeholder="変更理由を入力してください" class="w-full bg-black/40 border-white/30 rounded-xl text-white px-4 py-3 placeholder-slate-600 text-sm focus:ring-emerald-500"></textarea>
+                                        </div>
+                                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-lg transition-all">
+                                            上長に申請する
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                     @endif
 

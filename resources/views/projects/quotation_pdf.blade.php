@@ -94,8 +94,8 @@
 
     @php
         $qty = (int) ($project->device_count ?? 0);
-        $workAmount = (float) ($project->final_price ?? 0);
-        $unitPrice = $qty > 0 ? $workAmount / $qty : $workAmount;
+        $unitPrice = (float) ($project->final_price ?? 0);
+        $workAmount = $unitPrice * $qty;
         $shippingEnabled = (bool) $project->quote_shipping_enabled;
         $shippingAmount = $shippingEnabled ? (float) ($project->quote_shipping_fee ?? 0) : 0;
         $subtotal = $workAmount + $shippingAmount;
